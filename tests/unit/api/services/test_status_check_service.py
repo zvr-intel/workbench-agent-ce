@@ -334,3 +334,89 @@ def test_extract_server_duration_invalid():
     """Test invalid timestamp format -> None."""
     raw = {"started": "invalid", "finished": "invalid"}
     assert extract_server_duration(raw) is None
+
+
+# --- Test wait=True functionality ---
+
+
+def test_check_scan_status_with_wait(
+    status_check_service, mock_scans_client, mocker
+):
+    """Test check_scan_status with wait=True."""
+    # Mock the private method to return different states
+    mock_scans_client.check_status.side_effect = [
+        {"status": "RUNNING"},
+        {"status": "RUNNING"},
+        {
+            "status": "FINISHED",
+            "started": "2025-08-08 00:00:00",
+            "finished": "2025-08-08 00:00:10",
+        },
+    ]
+
+    result = status_check_service.check_scan_status(
+        "scan123", wait=True, wait_retry_count=10, wait_retry_interval=0.01
+    )
+
+    assert isinstance(result, StatusResult)
+    assert result.status == "FINISHED"
+    assert result.success is True
+    assert result.duration == 10.0
+    assert result.is_terminal is True
+
+
+def test_check_scan_status_without_wait(
+    status_check_service, mock_scans_client
+):
+    """Test check_scan_status with wait=False (default)."""
+    mock_scans_client.check_status.return_value = {"status": "RUNNING"}
+
+    result = status_check_service.check_scan_status("scan123")
+
+    assert isinstance(result, StatusResult)
+    assert result.status == "RUNNING"
+    assert result.is_active is True
+    assert result.duration is None  # No duration when not waiting
+
+
+def test_check_extract_archives_status_wait_failure(
+    status_check_service, mock_scans_client
+):
+    """Test check_extract_archives_status with wait=True and failure."""
+    mock_scans_client.check_status.side_effect = [
+        {"status": "QUEUED"},
+        {
+            "status": "FAILED",
+            "error": "Extraction failed",
+            "started": "2025-08-08 00:00:00",
+            "finished": "2025-08-08 00:00:05",
+        },
+    ]
+
+    result = status_check_service.check_extract_archives_status(
+        "scan123", wait=True, wait_retry_count=10, wait_retry_interval=0.01
+    )
+
+    assert result.status == "FAILED"
+    assert result.success is False
+    assert result.error_message == "Extraction failed"
+    assert result.duration == 5.0
+
+
+def test_check_dependency_analysis_status_wait_cancelled(
+    status_check_service, mock_scans_client
+):
+    """Test check_dependency_analysis_status with CANCELLED status."""
+    mock_scans_client.check_status.side_effect = [
+        {"status": "RUNNING"},
+        {"status": "CANCELLED", "info": "User cancelled"},
+    ]
+
+    result = status_check_service.check_dependency_analysis_status(
+        "scan123", wait=True, wait_retry_count=10, wait_retry_interval=0.01
+    )
+
+    assert result.status == "CANCELLED"
+    assert result.success is False
+    assert result.is_failed is True
+    assert result.error_message == "User cancelled"
