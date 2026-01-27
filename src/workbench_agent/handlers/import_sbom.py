@@ -228,7 +228,7 @@ def handle_import_sbom(
         try:
             print("\nWaiting for SBOM import to complete...")
             # Use optimized 3-second wait interval for import mode
-            import_result = client.status_check.check_report_import_status(
+            client.status_check.check_report_import_status(
                 scan_code,
                 wait=True,
                 wait_retry_count=params.scan_number_of_tries,

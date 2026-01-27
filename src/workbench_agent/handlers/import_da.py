@@ -113,7 +113,7 @@ def handle_import_da(
     try:
         print("\nWaiting for Dependency Analysis import to complete...")
         # Use optimized 3-second wait interval for import-only mode
-        da_result = client.status_check.check_dependency_analysis_status(
+        client.status_check.check_dependency_analysis_status(
             scan_code,
             wait=True,
             wait_retry_count=params.scan_number_of_tries,
