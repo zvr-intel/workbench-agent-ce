@@ -1,9 +1,9 @@
 """
-StatusCheckService - Status checking and waiting for async Workbench operations.
+StatusCheckService - Status checking and waiting for Workbench processes.
 
 This service provides specialized status checking methods for different
-operation types with optional waiting capability. Each operation has its own
-dedicated method that knows how to extract and normalize status from that
+processes with optional waiting. Each status checker has its own
+method that knows how to extract a normalized status from that
 operation's specific response format.
 
 With wait=True, the service polls until the operation reaches a terminal
@@ -15,8 +15,14 @@ Architecture:
 
 import logging
 import time
-from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Literal,
+    Union,
+    overload,
+)
 
 from workbench_agent.api.exceptions import UnsupportedStatusCheck
 from workbench_agent.api.utils.process_waiter import (
@@ -119,15 +125,12 @@ class StatusCheckService:
             if isinstance(data, str):
                 raw_status = data.upper()
             elif isinstance(data, dict):
-                # Extract status from 'data' field (contains the git clone status string)
+                # Extract status from 'data' field (contains the clone status)
                 raw_status = str(data.get("data", "UNKNOWN")).upper()
             else:
-                logger.warning(
-                    f"Unexpected data type for git status: {type(data)}"
-                )
-                return "ACCESS_ERROR"
+                raise ValueError(f"Unexpected git status: {type(data)}")
 
-            # Treat "NOT STARTED" as NEW (operation hasn't been requested)
+            # Treat "NOT STARTED" as NEW (process hasn't been requested)
             if raw_status == "NOT STARTED":
                 logger.debug(
                     "Git operation status is NOT STARTED - "
@@ -277,10 +280,124 @@ class StatusCheckService:
             return "ACCESS_ERROR"
 
     # =====================================================================
-    # SPECIALIZED STATUS CHECKING METHODS
+    # PRIVATE STATUS COLLECTION METHODS
+    # =====================================================================
+
+    def _get_git_clone_status(self, scan_code: str) -> StatusResult:
+        """Collect git clone status without waiting."""
+        status_data = self._scans.check_status_download_content_from_git(
+            scan_code
+        )
+        normalized_status = self._git_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    def _get_scan_status(self, scan_code: str) -> StatusResult:
+        """Collect KB scan status without waiting."""
+        status_data = self._scans.check_status(scan_code, "SCAN")
+        normalized_status = self._standard_scan_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    def _get_dependency_analysis_status(
+        self, scan_code: str
+    ) -> StatusResult:
+        """Collect dependency analysis status without waiting."""
+        status_data = self._scans.check_status(
+            scan_code, "DEPENDENCY_ANALYSIS"
+        )
+        normalized_status = self._standard_scan_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    def _get_extract_archives_status(self, scan_code: str) -> StatusResult:
+        """Collect archive extraction status without waiting."""
+        status_data = self._scans.check_status(scan_code, "EXTRACT_ARCHIVES")
+        normalized_status = self._standard_scan_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    def _get_report_import_status(self, scan_code: str) -> StatusResult:
+        """Collect report import status without waiting."""
+        status_data = self._scans.check_status(scan_code, "REPORT_IMPORT")
+        normalized_status = self._standard_scan_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    def _get_scan_report_status(
+        self, scan_code: str, process_id: int
+    ) -> StatusResult:
+        """Collect scan report generation status without waiting."""
+        status_data = self._scans.check_status(
+            scan_code, "REPORT_GENERATION", process_id=str(process_id)
+        )
+        normalized_status = self._standard_scan_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    def _get_project_report_status(
+        self, process_id: int, project_code: str
+    ) -> StatusResult:
+        """Collect project report generation status without waiting."""
+        raw_status_data = self._projects.check_status(
+            process_id=int(process_id), process_type="REPORT_GENERATION"
+        )
+        normalized_status = self._project_report_status_accessor(
+            raw_status_data
+        )
+        return StatusResult(
+            status=normalized_status,
+            raw_data=raw_status_data,
+        )
+
+    def _get_delete_scan_status(
+        self, scan_code: str, process_id: int
+    ) -> StatusResult:
+        """Collect scan deletion status without waiting."""
+        status_data = self._scans.check_status(
+            scan_code, "DELETE_SCAN", process_id=str(process_id)
+        )
+        normalized_status = self._standard_scan_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    # =====================================================================
+    # PUBLIC STATUS CHECKING METHODS (with optional waiting)
     # =====================================================================
 
     # --- GIT OPERATIONS ---
+
+    @overload
+    def check_git_clone_status(
+        self,
+        scan_code: str,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 3,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_git_clone_status(
+        self,
+        scan_code: str,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 3,
+    ) -> WaitResult: ...
 
     def check_git_clone_status(
         self,
@@ -304,33 +421,37 @@ class StatusCheckService:
         Returns:
             StatusResult if wait=False, WaitResult if wait=True
         """
-        # Get raw status data from the API (always returns dict)
-        status_data = self._scans.check_status_download_content_from_git(
-            scan_code
-        )
-
-        # Extract and normalize status
-        normalized_status = self._git_status_accessor(status_data)
-
-        # Create standardized result
-        result = StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
-        )
-
         if wait:
             return wait_for_completion(
-                check_function=lambda: self.check_git_clone_status(
-                    scan_code, wait=False
-                ),
+                check_function=lambda: self._get_git_clone_status(scan_code),
                 max_tries=wait_retry_count,
                 wait_interval=wait_retry_interval,
                 operation_name=f"Git Clone '{scan_code}'",
             )
 
-        return result
+        return self._get_git_clone_status(scan_code)
 
     # --- SCAN OPERATIONS ---
+
+    @overload
+    def check_scan_status(
+        self,
+        scan_code: str,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+        should_track_files: bool = False,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_scan_status(
+        self,
+        scan_code: str,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+        should_track_files: bool = False,
+    ) -> WaitResult: ...
 
     def check_scan_status(
         self,
@@ -361,16 +482,6 @@ class StatusCheckService:
             Terminal states are: FINISHED, FAILED, CANCELLED. Waiting
             continues until one of these states is reached.
         """
-        status_data = self._scans.check_status(scan_code, "SCAN")
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        result = StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
-        )
-
         if wait:
             progress_callback = None
             if should_track_files:
@@ -379,16 +490,32 @@ class StatusCheckService:
                 )
 
             return wait_for_completion(
-                check_function=lambda: self.check_scan_status(
-                    scan_code, wait=False
-                ),
+                check_function=lambda: self._get_scan_status(scan_code),
                 max_tries=wait_retry_count,
                 wait_interval=wait_retry_interval,
                 operation_name=f"KB Scan '{scan_code}'",
                 progress_callback=progress_callback,
             )
 
-        return result
+        return self._get_scan_status(scan_code)
+
+    @overload
+    def check_dependency_analysis_status(
+        self,
+        scan_code: str,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_dependency_analysis_status(
+        self,
+        scan_code: str,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> WaitResult: ...
 
     def check_dependency_analysis_status(
         self,
@@ -412,29 +539,35 @@ class StatusCheckService:
         Returns:
             StatusResult if wait=False, WaitResult if wait=True
         """
-        status_data = self._scans.check_status(
-            scan_code, "DEPENDENCY_ANALYSIS"
-        )
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        result = StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
-        )
-
         if wait:
             return wait_for_completion(
-                check_function=lambda: self.check_dependency_analysis_status(
-                    scan_code, wait=False
+                check_function=lambda: self._get_dependency_analysis_status(
+                    scan_code
                 ),
                 max_tries=wait_retry_count,
                 wait_interval=wait_retry_interval,
                 operation_name=f"Dependency Analysis '{scan_code}'",
             )
 
-        return result
+        return self._get_dependency_analysis_status(scan_code)
+
+    @overload
+    def check_extract_archives_status(
+        self,
+        scan_code: str,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_extract_archives_status(
+        self,
+        scan_code: str,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> WaitResult: ...
 
     def check_extract_archives_status(
         self,
@@ -459,29 +592,17 @@ class StatusCheckService:
             StatusResult if wait=False, WaitResult if wait=True
         """
         try:
-            status_data = self._scans.check_status(
-                scan_code, "EXTRACT_ARCHIVES"
-            )
-            normalized_status = self._standard_scan_status_accessor(
-                status_data
-            )
-
-            result = StatusResult(
-                status=normalized_status,
-                raw_data=status_data,
-            )
-
             if wait:
                 return wait_for_completion(
-                    check_function=lambda: self.check_extract_archives_status(
-                        scan_code, wait=False
+                    check_function=lambda: self._get_extract_archives_status(
+                        scan_code
                     ),
                     max_tries=wait_retry_count,
                     wait_interval=wait_retry_interval,
                     operation_name=f"Extract Archives '{scan_code}'",
                 )
 
-            return result
+            return self._get_extract_archives_status(scan_code)
         except UnsupportedStatusCheck:
             # Graceful degradation for Workbench < 25.1.0
             if wait:
@@ -495,11 +616,32 @@ class StatusCheckService:
                 )
                 time.sleep(5)
                 return WaitResult(
-                    status_data={}, duration=None, status="FINISHED", success=True
+                    status_data={},
+                    duration=None,
+                    status="FINISHED",
+                    success=True,
                 )
             else:
                 # Re-raise if not waiting
                 raise
+
+    @overload
+    def check_report_import_status(
+        self,
+        scan_code: str,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_report_import_status(
+        self,
+        scan_code: str,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> WaitResult: ...
 
     def check_report_import_status(
         self,
@@ -523,27 +665,17 @@ class StatusCheckService:
         Returns:
             StatusResult if wait=False, WaitResult if wait=True
         """
-        status_data = self._scans.check_status(scan_code, "REPORT_IMPORT")
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        result = StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
-        )
-
         if wait:
             return wait_for_completion(
-                check_function=lambda: self.check_report_import_status(
-                    scan_code, wait=False
+                check_function=lambda: self._get_report_import_status(
+                    scan_code
                 ),
                 max_tries=wait_retry_count,
                 wait_interval=wait_retry_interval,
                 operation_name=f"Report Import '{scan_code}'",
             )
 
-        return result
+        return self._get_report_import_status(scan_code)
 
     # --- NOTICE EXTRACTION OPERATIONS ---
 
@@ -621,6 +753,26 @@ class StatusCheckService:
 
     # --- REPORT OPERATIONS ---
 
+    @overload
+    def check_scan_report_status(
+        self,
+        scan_code: str,
+        process_id: int,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_scan_report_status(
+        self,
+        scan_code: str,
+        process_id: int,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> WaitResult: ...
+
     def check_scan_report_status(
         self,
         scan_code: str,
@@ -645,29 +797,37 @@ class StatusCheckService:
         Returns:
             StatusResult if wait=False, WaitResult if wait=True
         """
-        status_data = self._scans.check_status(
-            scan_code, "REPORT_GENERATION", process_id=str(process_id)
-        )
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        result = StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
-        )
-
         if wait:
             return wait_for_completion(
-                check_function=lambda: self.check_scan_report_status(
-                    scan_code, process_id, wait=False
+                check_function=lambda: self._get_scan_report_status(
+                    scan_code, process_id
                 ),
                 max_tries=wait_retry_count,
                 wait_interval=wait_retry_interval,
                 operation_name=f"Scan Report '{scan_code}'",
             )
 
-        return result
+        return self._get_scan_report_status(scan_code, process_id)
+
+    @overload
+    def check_project_report_status(
+        self,
+        process_id: int,
+        project_code: str,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_project_report_status(
+        self,
+        process_id: int,
+        project_code: str,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> WaitResult: ...
 
     def check_project_report_status(
         self,
@@ -693,32 +853,39 @@ class StatusCheckService:
         Returns:
             StatusResult if wait=False, WaitResult if wait=True
         """
-        # Call the projects API with report generation type
-        raw_status_data = self._projects.check_status(
-            process_id=int(process_id), process_type="REPORT_GENERATION"
-        )
-        normalized_status = self._project_report_status_accessor(
-            raw_status_data
-        )
-
-        result = StatusResult(
-            status=normalized_status,
-            raw_data=raw_status_data,
-        )
-
         if wait:
             return wait_for_completion(
-                check_function=lambda: self.check_project_report_status(
-                    process_id, project_code, wait=False
+                check_function=lambda: self._get_project_report_status(
+                    process_id, project_code
                 ),
                 max_tries=wait_retry_count,
                 wait_interval=wait_retry_interval,
                 operation_name=f"Project Report '{project_code}'",
             )
 
-        return result
+        return self._get_project_report_status(process_id, project_code)
 
     # --- DELETE OPERATIONS ---
+
+    @overload
+    def check_delete_scan_status(
+        self,
+        scan_code: str,
+        process_id: int,
+        wait: Literal[False] = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult: ...
+
+    @overload
+    def check_delete_scan_status(
+        self,
+        scan_code: str,
+        process_id: int,
+        wait: Literal[True],
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> WaitResult: ...
 
     def check_delete_scan_status(
         self,
@@ -744,29 +911,17 @@ class StatusCheckService:
         Returns:
             StatusResult if wait=False, WaitResult if wait=True
         """
-        status_data = self._scans.check_status(
-            scan_code, "DELETE_SCAN", process_id=str(process_id)
-        )
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        result = StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
-        )
-
         if wait:
             return wait_for_completion(
-                check_function=lambda: self.check_delete_scan_status(
-                    scan_code, process_id, wait=False
+                check_function=lambda: self._get_delete_scan_status(
+                    scan_code, process_id
                 ),
                 max_tries=wait_retry_count,
                 wait_interval=wait_retry_interval,
                 operation_name=f"Delete Scan '{scan_code}'",
             )
 
-        return result
+        return self._get_delete_scan_status(scan_code, process_id)
 
     # =====================================================================
     # WAITING INFRASTRUCTURE
