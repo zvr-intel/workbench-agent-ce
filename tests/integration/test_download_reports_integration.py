@@ -20,7 +20,7 @@ class TestDownloadReportsIntegration:
         report_dir.mkdir()
 
         # Mock report service methods
-        from workbench_agent.api.utils.process_waiter import WaitResult
+        from workbench_agent.api.utils.process_waiter import StatusResult
 
         mock_workbench_api.reports.SCAN_REPORT_TYPES = {
             "html",
@@ -40,8 +40,11 @@ class TestDownloadReportsIntegration:
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
         )
-        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = WaitResult(
-            status_data={"status": "FINISHED"}, duration=5.0, success=True
+        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = StatusResult(
+            status="FINISHED",
+            raw_data={"status": "FINISHED"},
+            duration=5.0,
+            success=True,
         )
 
         # Mock file operations
@@ -91,7 +94,7 @@ class TestDownloadReportsIntegration:
         report_dir.mkdir()
 
         # Mock report service methods
-        from workbench_agent.api.utils.process_waiter import WaitResult
+        from workbench_agent.api.utils.process_waiter import StatusResult
 
         mock_workbench_api.reports.SCAN_REPORT_TYPES = {
             "html",
@@ -115,8 +118,11 @@ class TestDownloadReportsIntegration:
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
         )
-        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = WaitResult(
-            status_data={"status": "FINISHED"}, duration=5.0, success=True
+        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = StatusResult(
+            status="FINISHED",
+            raw_data={"status": "FINISHED"},
+            duration=5.0,
+            success=True,
         )
 
         # Mock file operations
@@ -168,7 +174,7 @@ class TestDownloadReportsIntegration:
         report_dir.mkdir()
 
         # Mock report service methods
-        from workbench_agent.api.utils.process_waiter import WaitResult
+        from workbench_agent.api.utils.process_waiter import StatusResult
 
         mock_workbench_api.reports.PROJECT_REPORT_TYPES = {
             "xlsx",
@@ -185,8 +191,11 @@ class TestDownloadReportsIntegration:
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
         )
-        mock_workbench_api.waiting.wait_for_project_report_completion.return_value = WaitResult(
-            status_data={"status": "FINISHED"}, duration=5.0, success=True
+        mock_workbench_api.waiting.wait_for_project_report_completion.return_value = StatusResult(
+            status="FINISHED",
+            raw_data={"status": "FINISHED"},
+            duration=5.0,
+            success=True,
         )
 
         # Mock file operations

@@ -13,6 +13,9 @@ from workbench_agent.api.exceptions import (
 from workbench_agent.exceptions import FileSystemError, ValidationError
 from workbench_agent.utilities.error_handling import handler_error_wrapper
 from workbench_agent.utilities.post_report_summary import print_report_summary
+from workbench_agent.utilities.pre_flight_checks import (
+    download_reports_pre_flight_check,
+)
 
 if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
@@ -128,73 +131,7 @@ def handle_download_reports(
 
     # Check scan completion status for scan-scope reports
     if params.report_scope == "scan" and scan_code:
-        print("\nChecking scan completion status...")
-
-        # Wait for KB scan using check-first pattern
-        try:
-            scan_status = client.status_check.check_scan_status(scan_code)
-            if scan_status.status == "RUNNING":
-                print(
-                    "\nKB Scan is still in progress, "
-                    "waiting for it to complete..."
-                )
-
-            client.waiting.wait_for_scan(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-            print("KB Scan has completed successfully.")
-        except ProcessTimeoutError as e:
-            print(f"\nWarning: KB Scan did not complete in time: {e}")
-            print("Reports may be incomplete.")
-            logger.warning(
-                f"Generating reports for scan '{scan_code}' with "
-                f"incomplete KB scan: {e}"
-            )
-        except (ApiError, NetworkError) as e:
-            print(f"\nWarning: Could not verify KB Scan completion: {e}")
-            print("Proceeding anyway, but reports may be incomplete.")
-            logger.warning(
-                f"Could not verify KB scan completion for '{scan_code}': {e}"
-            )
-
-        # Wait for dependency analysis using check-first pattern
-        try:
-            da_status = (
-                client.status_check.check_dependency_analysis_status(
-                    scan_code
-                )
-            )
-            if da_status.status == "RUNNING":
-                print(
-                    "\nDependency Analysis is still in progress, "
-                    "waiting for it to complete..."
-                )
-
-            client.waiting.wait_for_da(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-            print("Dependency Analysis has completed successfully.")
-        except ProcessTimeoutError as e:
-            print(
-                f"\nWarning: Dependency Analysis did not complete in time: {e}"
-            )
-            print("Reports may have incomplete dependency information.")
-            logger.warning(
-                f"Generating reports for scan '{scan_code}' with "
-                f"incomplete DA: {e}"
-            )
-        except (ApiError, NetworkError) as e:
-            print(
-                f"\nWarning: Could not verify Dependency Analysis status: {e}"
-            )
-            print("Proceeding anyway, but reports may be incomplete.")
-            logger.warning(
-                f"Could not verify DA completion for '{scan_code}': {e}"
-            )
+        download_reports_pre_flight_check(client, scan_code, params)
 
     # Generate and download reports based on scope
     scope_label = "project" if params.report_scope == "project" else "scan"
@@ -274,19 +211,21 @@ def handle_download_reports(
                     max_tries = getattr(params, "scan_number_of_tries", 60)
                     if params.report_scope == "project":
                         # Project report generation
-                        client.waiting.wait_for_project_report_completion(
-                            project_code=project_code,
+                        client.status_check.check_project_report_status(
                             process_id=process_id,
-                            max_tries=max_tries,
-                            wait_interval=3,  # Fixed 3-second interval
+                            project_code=project_code,
+                            wait=True,
+                            wait_retry_count=max_tries,
+                            wait_retry_interval=3,  # Fixed 3-second interval
                         )
                     else:
                         # Scan report generation
-                        client.waiting.wait_for_scan_report_completion(
+                        client.status_check.check_scan_report_status(
                             scan_code=scan_code,
                             process_id=process_id,
-                            max_tries=max_tries,
-                            wait_interval=3,  # Fixed 3-second interval
+                            wait=True,
+                            wait_retry_count=max_tries,
+                            wait_retry_interval=3,  # Fixed 3-second interval
                         )
                 except ProcessTimeoutError as e:
                     logger.error(

@@ -12,7 +12,10 @@ from workbench_agent.api.exceptions import (
 from workbench_agent.api.services.status_check_service import (
     StatusCheckService,
 )
-from workbench_agent.api.utils.process_waiter import StatusResult
+from workbench_agent.api.utils.process_waiter import (
+    StatusResult,
+    extract_server_duration,
+)
 
 
 # --- Fixtures ---
@@ -113,10 +116,10 @@ def test_standard_scan_status_accessor_access_error(status_check_service):
 
 
 def test_standard_scan_status_accessor_new_status(status_check_service):
-    """Test that NEW status is treated as FINISHED (idle)."""
+    """Test that NEW status is preserved (six-state model)."""
     data = {"status": "NEW"}
     status = status_check_service._standard_scan_status_accessor(data)
-    assert status == "FINISHED"
+    assert status == "NEW"
 
 
 def test_standard_scan_status_accessor_progress_state(
@@ -129,7 +132,7 @@ def test_standard_scan_status_accessor_progress_state(
 
     data = {"progress_state": "NEW"}
     status = status_check_service._standard_scan_status_accessor(data)
-    assert status == "FINISHED"  # NEW should be treated as idle
+    assert status == "NEW"  # NEW is preserved in six-state model
 
 
 # --- Test specialized status checking methods ---
@@ -273,10 +276,10 @@ def test_git_status_accessor_variants(status_check_service):
         status_check_service._git_status_accessor({"data": "running"})
         == "RUNNING"
     )
-    # NOT STARTED maps to FINISHED (idle)
+    # NOT STARTED maps to NEW (six-state model)
     assert (
         status_check_service._git_status_accessor({"data": "NOT STARTED"})
-        == "FINISHED"
+        == "NEW"
     )
     # Unexpected type -> ACCESS_ERROR
     assert status_check_service._git_status_accessor(123) == "ACCESS_ERROR"
@@ -284,12 +287,12 @@ def test_git_status_accessor_variants(status_check_service):
 
 def test_project_report_status_accessor(status_check_service):
     """Test project report status accessor."""
-    # NEW -> FINISHED
+    # NEW -> NEW (six-state model)
     assert (
         status_check_service._project_report_status_accessor(
             {"progress_state": "NEW"}
         )
-        == "FINISHED"
+        == "NEW"
     )
     # RUNNING -> RUNNING
     assert (
@@ -305,29 +308,115 @@ def test_project_report_status_accessor(status_check_service):
     )
 
 
-def test_extract_server_duration_valid(status_check_service):
+def test_extract_server_duration_valid():
     """Test server duration extraction when started/finished present."""
     raw = {
         "started": "2025-08-08 00:00:00",
         "finished": "2025-08-08 00:00:05",
     }
-    duration = status_check_service.extract_server_duration(raw)
+    duration = extract_server_duration(raw)
     assert duration == 5.0
 
 
-def test_extract_server_duration_git_format(status_check_service):
+def test_extract_server_duration_git_format():
     """Test git format data should return None for duration."""
     raw = {"data": "FINISHED"}
-    assert status_check_service.extract_server_duration(raw) is None
+    assert extract_server_duration(raw) is None
 
 
-def test_extract_server_duration_missing(status_check_service):
+def test_extract_server_duration_missing():
     """Test missing timestamps -> None."""
     raw = {"status": "FINISHED"}
-    assert status_check_service.extract_server_duration(raw) is None
+    assert extract_server_duration(raw) is None
 
 
-def test_extract_server_duration_invalid(status_check_service):
+def test_extract_server_duration_invalid():
     """Test invalid timestamp format -> None."""
     raw = {"started": "invalid", "finished": "invalid"}
-    assert status_check_service.extract_server_duration(raw) is None
+    assert extract_server_duration(raw) is None
+
+
+# --- Test wait=True functionality ---
+
+
+def test_check_scan_status_with_wait(
+    status_check_service, mock_scans_client, mocker
+):
+    """Test check_scan_status with wait=True."""
+    # Mock the private method to return different states
+    mock_scans_client.check_status.side_effect = [
+        {"status": "RUNNING"},
+        {"status": "RUNNING"},
+        {
+            "status": "FINISHED",
+            "started": "2025-08-08 00:00:00",
+            "finished": "2025-08-08 00:00:10",
+        },
+    ]
+
+    result = status_check_service.check_scan_status(
+        "scan123", wait=True, wait_retry_count=10, wait_retry_interval=0.01
+    )
+
+    assert isinstance(result, StatusResult)
+    assert result.status == "FINISHED"
+    assert result.success is True
+    assert result.duration == 10.0
+    assert result.is_terminal is True
+
+
+def test_check_scan_status_without_wait(
+    status_check_service, mock_scans_client
+):
+    """Test check_scan_status with wait=False (default)."""
+    mock_scans_client.check_status.return_value = {"status": "RUNNING"}
+
+    result = status_check_service.check_scan_status("scan123")
+
+    assert isinstance(result, StatusResult)
+    assert result.status == "RUNNING"
+    assert result.is_active is True
+    assert result.duration is None  # No duration when not waiting
+
+
+def test_check_extract_archives_status_wait_failure(
+    status_check_service, mock_scans_client
+):
+    """Test check_extract_archives_status with wait=True and failure."""
+    mock_scans_client.check_status.side_effect = [
+        {"status": "QUEUED"},
+        {
+            "status": "FAILED",
+            "error": "Extraction failed",
+            "started": "2025-08-08 00:00:00",
+            "finished": "2025-08-08 00:00:05",
+        },
+    ]
+
+    result = status_check_service.check_extract_archives_status(
+        "scan123", wait=True, wait_retry_count=10, wait_retry_interval=0.01
+    )
+
+    assert result.status == "FAILED"
+    assert result.success is False
+    assert result.error_message == "Extraction failed"
+    assert result.duration == 5.0
+
+
+def test_check_dependency_analysis_status_wait_cancelled(
+    status_check_service, mock_scans_client
+):
+    """Test check_dependency_analysis_status with CANCELLED status."""
+    mock_scans_client.check_status.side_effect = [
+        {"status": "RUNNING"},
+        {"status": "CANCELLED", "info": "User cancelled"},
+    ]
+
+    result = status_check_service.check_dependency_analysis_status(
+        "scan123", wait=True, wait_retry_count=10, wait_retry_interval=0.01
+    )
+
+    assert result.status == "CANCELLED"
+    assert result.success is False
+    assert result.is_failed is True
+    assert result.error_message == "User cancelled"

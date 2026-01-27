@@ -4,8 +4,10 @@ import argparse
 import logging
 from typing import TYPE_CHECKING
 
+from workbench_agent.api.exceptions import ProcessError
 from workbench_agent.utilities.error_handling import handler_error_wrapper
 from workbench_agent.utilities.post_scan_summary import print_scan_summary
+from workbench_agent.utilities.pre_flight_checks import scan_pre_flight_check
 from workbench_agent.utilities.scan_workflows import determine_scans_to_run
 
 if TYPE_CHECKING:
@@ -89,69 +91,7 @@ def handle_scan(
     )
 
     # Assert scan is idle before uploading code
-    # Skip idle checks for new scans (they're guaranteed to be idle)
-    if not scan_is_new:
-        print("\nEnsuring the Scan is idle before uploading code...")
-        # Check each process type individually (new API pattern)
-        try:
-            # Check status first to inform user if extraction is running
-            extract_status = (
-                client.status_check.check_extract_archives_status(
-                    scan_code
-                )
-            )
-            if extract_status.status == "RUNNING":
-                print(
-                    "\nA prior Archive Extraction operation is in progress, "
-                    "waiting for it to complete."
-                )
-            client.waiting.wait_for_extract_archives(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-        except Exception as e:
-            logger.debug(f"Extract archives check skipped: {e}")
-
-        try:
-            # Check status first to inform user if scan is already running
-            scan_status = client.status_check.check_scan_status(scan_code)
-            if scan_status.status == "RUNNING":
-                print(
-                    "\nA prior Scan operation is in progress, "
-                    "waiting for it to complete."
-                )
-            client.waiting.wait_for_scan(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-        except Exception as e:
-            logger.debug(f"Scan status check skipped: {e}")
-
-        try:
-            # Check status first to inform user if DA is already running
-            da_status = (
-                client.status_check.check_dependency_analysis_status(
-                    scan_code
-                )
-            )
-            if da_status.status == "RUNNING":
-                print(
-                    "\nA prior Dependency Analysis operation is in progress, "
-                    "waiting for it to complete."
-                )
-            client.waiting.wait_for_da(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-        except Exception as e:
-            logger.debug(f"Dependency analysis check skipped: {e}")
-    else:
-        logger.debug(
-            "Skipping idle checks - new scan is guaranteed to be idle"
-        )
+    scan_pre_flight_check(client, scan_code, scan_is_new, params)
 
     # Clear existing scan content (skip for new scans - they're empty)
     if not scan_is_new:
@@ -179,14 +119,24 @@ def handle_scan(
     )
 
     if extraction_triggered:
-        extraction_status = client.waiting.wait_for_extract_archives(
+        extraction_result = client.status_check.check_extract_archives_status(
             scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=5,
+            wait=True,
+            wait_retry_count=params.scan_number_of_tries,
+            wait_retry_interval=5,
         )
-        durations["extraction_duration"] = (
-            extraction_status.duration or 0.0
-        )
+        durations["extraction_duration"] = extraction_result.duration or 0.0
+
+        # BUG FIX: Check if extraction failed or was cancelled
+        if extraction_result.status in {"FAILED", "CANCELLED"}:
+            error_msg = (
+                extraction_result.error_message
+                or "Archive extraction failed. Scan can not continue."
+            )
+            raise ProcessError(
+                f"Archive extraction failed for scan '{scan_code}': "
+                f"{error_msg}"
+            )
     else:
         print("No archives to extract. Continuing with scan...")
 
@@ -224,16 +174,15 @@ def handle_scan(
 
         # Wait for dependency analysis to complete
         try:
-            dependency_analysis_status = client.waiting.wait_for_da(
+            da_result = client.status_check.check_dependency_analysis_status(
                 scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
             )
 
             # Store the duration
-            durations["dependency_analysis"] = (
-                dependency_analysis_status.duration or 0.0
-            )
+            durations["dependency_analysis"] = da_result.duration or 0.0
             da_completed = True
 
             # Show scan summary (includes Workbench link)
@@ -339,13 +288,14 @@ def handle_scan(
 
             try:
                 # Wait for KB scan completion (with file tracking)
-                kb_scan_status = client.waiting.wait_for_scan(
+                kb_scan_result = client.status_check.check_scan_status(
                     scan_code,
-                    max_tries=params.scan_number_of_tries,
-                    wait_interval=params.scan_wait_time,
+                    wait=True,
+                    wait_retry_count=params.scan_number_of_tries,
+                    wait_retry_interval=params.scan_wait_time,
                     should_track_files=True,
                 )
-                durations["kb_scan"] = kb_scan_status.duration or 0.0
+                durations["kb_scan"] = kb_scan_result.duration or 0.0
 
                 # Wait for dependency analysis if requested
                 if scan_operations["run_dependency_analysis"]:
@@ -353,15 +303,16 @@ def handle_scan(
                         "\nWaiting for Dependency Analysis to complete..."
                     )
                     try:
-                        dependency_analysis_status = (
-                            client.waiting.wait_for_da(
+                        da_result = (
+                            client.status_check.check_dependency_analysis_status(
                                 scan_code,
-                                max_tries=params.scan_number_of_tries,
-                                wait_interval=params.scan_wait_time,
+                                wait=True,
+                                wait_retry_count=params.scan_number_of_tries,
+                                wait_retry_interval=params.scan_wait_time,
                             )
                         )
                         durations["dependency_analysis"] = (
-                            dependency_analysis_status.duration or 0.0
+                            da_result.duration or 0.0
                         )
                         da_completed = True
                     except Exception as da_error:
