@@ -12,7 +12,10 @@ from workbench_agent.api.exceptions import (
 from workbench_agent.api.services.status_check_service import (
     StatusCheckService,
 )
-from workbench_agent.api.utils.process_waiter import StatusResult
+from workbench_agent.api.utils.process_waiter import (
+    StatusResult,
+    extract_server_duration,
+)
 
 
 # --- Fixtures ---
@@ -113,10 +116,10 @@ def test_standard_scan_status_accessor_access_error(status_check_service):
 
 
 def test_standard_scan_status_accessor_new_status(status_check_service):
-    """Test that NEW status is treated as FINISHED (idle)."""
+    """Test that NEW status is preserved (six-state model)."""
     data = {"status": "NEW"}
     status = status_check_service._standard_scan_status_accessor(data)
-    assert status == "FINISHED"
+    assert status == "NEW"
 
 
 def test_standard_scan_status_accessor_progress_state(
@@ -129,7 +132,7 @@ def test_standard_scan_status_accessor_progress_state(
 
     data = {"progress_state": "NEW"}
     status = status_check_service._standard_scan_status_accessor(data)
-    assert status == "FINISHED"  # NEW should be treated as idle
+    assert status == "NEW"  # NEW is preserved in six-state model
 
 
 # --- Test specialized status checking methods ---
@@ -273,10 +276,10 @@ def test_git_status_accessor_variants(status_check_service):
         status_check_service._git_status_accessor({"data": "running"})
         == "RUNNING"
     )
-    # NOT STARTED maps to FINISHED (idle)
+    # NOT STARTED maps to NEW (six-state model)
     assert (
         status_check_service._git_status_accessor({"data": "NOT STARTED"})
-        == "FINISHED"
+        == "NEW"
     )
     # Unexpected type -> ACCESS_ERROR
     assert status_check_service._git_status_accessor(123) == "ACCESS_ERROR"
@@ -284,12 +287,12 @@ def test_git_status_accessor_variants(status_check_service):
 
 def test_project_report_status_accessor(status_check_service):
     """Test project report status accessor."""
-    # NEW -> FINISHED
+    # NEW -> NEW (six-state model)
     assert (
         status_check_service._project_report_status_accessor(
             {"progress_state": "NEW"}
         )
-        == "FINISHED"
+        == "NEW"
     )
     # RUNNING -> RUNNING
     assert (
@@ -305,29 +308,29 @@ def test_project_report_status_accessor(status_check_service):
     )
 
 
-def test_extract_server_duration_valid(status_check_service):
+def test_extract_server_duration_valid():
     """Test server duration extraction when started/finished present."""
     raw = {
         "started": "2025-08-08 00:00:00",
         "finished": "2025-08-08 00:00:05",
     }
-    duration = status_check_service.extract_server_duration(raw)
+    duration = extract_server_duration(raw)
     assert duration == 5.0
 
 
-def test_extract_server_duration_git_format(status_check_service):
+def test_extract_server_duration_git_format():
     """Test git format data should return None for duration."""
     raw = {"data": "FINISHED"}
-    assert status_check_service.extract_server_duration(raw) is None
+    assert extract_server_duration(raw) is None
 
 
-def test_extract_server_duration_missing(status_check_service):
+def test_extract_server_duration_missing():
     """Test missing timestamps -> None."""
     raw = {"status": "FINISHED"}
-    assert status_check_service.extract_server_duration(raw) is None
+    assert extract_server_duration(raw) is None
 
 
-def test_extract_server_duration_invalid(status_check_service):
+def test_extract_server_duration_invalid():
     """Test invalid timestamp format -> None."""
     raw = {"started": "invalid", "finished": "invalid"}
-    assert status_check_service.extract_server_duration(raw) is None
+    assert extract_server_duration(raw) is None
