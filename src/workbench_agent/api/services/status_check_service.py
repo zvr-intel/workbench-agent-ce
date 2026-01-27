@@ -15,19 +15,11 @@ Architecture:
 
 import logging
 import time
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Literal,
-    Union,
-    overload,
-)
+from typing import Any, Dict, Union
 
 from workbench_agent.api.exceptions import UnsupportedStatusCheck
 from workbench_agent.api.utils.process_waiter import (
     StatusResult,
-    WaitResult,
     wait_for_completion,
 )
 
@@ -43,7 +35,8 @@ class StatusCheckService:
     formats and normalizes them into consistent StatusResult objects.
 
     With wait=True, methods poll until the operation reaches a terminal
-    state (FINISHED, FAILED, or CANCELLED) and return WaitResult.
+    state (FINISHED, FAILED, or CANCELLED) and return StatusResult with
+    duration populated.
 
     Six-State Model:
     - NEW: Operation hasn't been requested yet (idle)
@@ -73,6 +66,7 @@ class StatusCheckService:
         >>> result = service.check_scan_status("scan_123", wait=True)
         >>> print(result.status)  # "FINISHED"
         >>> print(result.success)  # True
+        >>> print(result.duration)  # 45.2 (seconds)
     """
 
     def __init__(self, scans_client, projects_client):
@@ -381,45 +375,26 @@ class StatusCheckService:
 
     # --- GIT OPERATIONS ---
 
-    @overload
-    def check_git_clone_status(
-        self,
-        scan_code: str,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 3,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_git_clone_status(
-        self,
-        scan_code: str,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 3,
-    ) -> WaitResult: ...
-
     def check_git_clone_status(
         self,
         scan_code: str,
         wait: bool = False,
         wait_retry_count: int = 360,
         wait_retry_interval: int = 3,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of a Git clone operation.
 
         Args:
             scan_code: Code of the scan to check
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
-                (default: 10, only used if wait=True)
+                (default: 3, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
+            StatusResult. When wait=True, duration will be populated.
         """
         if wait:
             return wait_for_completion(
@@ -433,26 +408,6 @@ class StatusCheckService:
 
     # --- SCAN OPERATIONS ---
 
-    @overload
-    def check_scan_status(
-        self,
-        scan_code: str,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-        should_track_files: bool = False,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_scan_status(
-        self,
-        scan_code: str,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-        should_track_files: bool = False,
-    ) -> WaitResult: ...
-
     def check_scan_status(
         self,
         scan_code: str,
@@ -460,14 +415,13 @@ class StatusCheckService:
         wait_retry_count: int = 360,
         wait_retry_interval: int = 10,
         should_track_files: bool = False,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of a KB scan operation.
 
         Args:
             scan_code: Code of the scan to check
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
@@ -476,11 +430,8 @@ class StatusCheckService:
                 (default: False, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
-
-        Note:
-            Terminal states are: FINISHED, FAILED, CANCELLED. Waiting
-            continues until one of these states is reached.
+            StatusResult. When wait=True, duration will be populated and
+            status will be terminal (FINISHED, FAILED, or CANCELLED).
         """
         if wait:
             progress_callback = None
@@ -499,45 +450,26 @@ class StatusCheckService:
 
         return self._get_scan_status(scan_code)
 
-    @overload
-    def check_dependency_analysis_status(
-        self,
-        scan_code: str,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_dependency_analysis_status(
-        self,
-        scan_code: str,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> WaitResult: ...
-
     def check_dependency_analysis_status(
         self,
         scan_code: str,
         wait: bool = False,
         wait_retry_count: int = 360,
         wait_retry_interval: int = 10,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of a dependency analysis operation.
 
         Args:
             scan_code: Code of the scan to check
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
                 (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
+            StatusResult. When wait=True, duration will be populated.
         """
         if wait:
             return wait_for_completion(
@@ -551,45 +483,26 @@ class StatusCheckService:
 
         return self._get_dependency_analysis_status(scan_code)
 
-    @overload
-    def check_extract_archives_status(
-        self,
-        scan_code: str,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_extract_archives_status(
-        self,
-        scan_code: str,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> WaitResult: ...
-
     def check_extract_archives_status(
         self,
         scan_code: str,
         wait: bool = False,
         wait_retry_count: int = 360,
         wait_retry_interval: int = 10,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of an archive extraction operation.
 
         Args:
             scan_code: Code of the scan to check
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
                 (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
+            StatusResult. When wait=True, duration will be populated.
         """
         try:
             if wait:
@@ -615,33 +528,15 @@ class StatusCheckService:
                     "(5 seconds)..."
                 )
                 time.sleep(5)
-                return WaitResult(
-                    status_data={},
-                    duration=None,
+                return StatusResult(
                     status="FINISHED",
+                    raw_data={},
+                    duration=None,
                     success=True,
                 )
             else:
                 # Re-raise if not waiting
                 raise
-
-    @overload
-    def check_report_import_status(
-        self,
-        scan_code: str,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_report_import_status(
-        self,
-        scan_code: str,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> WaitResult: ...
 
     def check_report_import_status(
         self,
@@ -649,21 +544,20 @@ class StatusCheckService:
         wait: bool = False,
         wait_retry_count: int = 360,
         wait_retry_interval: int = 10,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of a report import operation.
 
         Args:
             scan_code: Code of the scan to check
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
                 (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
+            StatusResult. When wait=True, duration will be populated.
         """
         if wait:
             return wait_for_completion(
@@ -753,26 +647,6 @@ class StatusCheckService:
 
     # --- REPORT OPERATIONS ---
 
-    @overload
-    def check_scan_report_status(
-        self,
-        scan_code: str,
-        process_id: int,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_scan_report_status(
-        self,
-        scan_code: str,
-        process_id: int,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> WaitResult: ...
-
     def check_scan_report_status(
         self,
         scan_code: str,
@@ -780,7 +654,7 @@ class StatusCheckService:
         wait: bool = False,
         wait_retry_count: int = 360,
         wait_retry_interval: int = 10,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of a scan report generation operation.
 
@@ -788,14 +662,13 @@ class StatusCheckService:
             scan_code: Code of the scan
             process_id: Process ID of the report generation
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
                 (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
+            StatusResult. When wait=True, duration will be populated.
         """
         if wait:
             return wait_for_completion(
@@ -809,26 +682,6 @@ class StatusCheckService:
 
         return self._get_scan_report_status(scan_code, process_id)
 
-    @overload
-    def check_project_report_status(
-        self,
-        process_id: int,
-        project_code: str,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_project_report_status(
-        self,
-        process_id: int,
-        project_code: str,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> WaitResult: ...
-
     def check_project_report_status(
         self,
         process_id: int,
@@ -836,7 +689,7 @@ class StatusCheckService:
         wait: bool = False,
         wait_retry_count: int = 360,
         wait_retry_interval: int = 10,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of a project report generation operation.
 
@@ -844,14 +697,13 @@ class StatusCheckService:
             process_id: Process ID of the report generation
             project_code: Code of the project (for logging)
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
                 (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
+            StatusResult. When wait=True, duration will be populated.
         """
         if wait:
             return wait_for_completion(
@@ -867,26 +719,6 @@ class StatusCheckService:
 
     # --- DELETE OPERATIONS ---
 
-    @overload
-    def check_delete_scan_status(
-        self,
-        scan_code: str,
-        process_id: int,
-        wait: Literal[False] = False,
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> StatusResult: ...
-
-    @overload
-    def check_delete_scan_status(
-        self,
-        scan_code: str,
-        process_id: int,
-        wait: Literal[True],
-        wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
-    ) -> WaitResult: ...
-
     def check_delete_scan_status(
         self,
         scan_code: str,
@@ -894,7 +726,7 @@ class StatusCheckService:
         wait: bool = False,
         wait_retry_count: int = 360,
         wait_retry_interval: int = 10,
-    ) -> Union[StatusResult, WaitResult]:
+    ) -> StatusResult:
         """
         Check the status of a scan deletion operation.
 
@@ -902,14 +734,13 @@ class StatusCheckService:
             scan_code: Code of the scan
             process_id: Process ID of the delete operation
             wait: If True, wait until operation reaches terminal state
-                (returns WaitResult)
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
                 (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult if wait=False, WaitResult if wait=True
+            StatusResult. When wait=True, duration will be populated.
         """
         if wait:
             return wait_for_completion(

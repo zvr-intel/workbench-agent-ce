@@ -16,7 +16,10 @@ Migration:
 import logging
 import warnings
 
-from workbench_agent.api.utils.process_waiter import WaitResult
+from workbench_agent.api.utils.process_waiter import (
+    StatusResult,
+    WaitResult,  # Backward compat alias
+)
 
 logger = logging.getLogger("workbench-agent")
 
@@ -58,7 +61,7 @@ class WaitingService:
         max_tries: int = 360,
         wait_interval: int = 10,
         should_track_files: bool = False,
-    ) -> WaitResult:
+    ) -> StatusResult:
         """
         DEPRECATED: Wait for a KB scan operation to complete.
 
@@ -71,7 +74,7 @@ class WaitingService:
             should_track_files: Show detailed file progress (default: False)
 
         Returns:
-            WaitResult: Result with final status and duration
+            StatusResult: Result with final status and duration
         """
         warnings.warn(
             "client.waiting.wait_for_scan() is deprecated. "
@@ -91,7 +94,7 @@ class WaitingService:
 
     def wait_for_da(
         self, scan_code: str, max_tries: int = 360, wait_interval: int = 10
-    ) -> WaitResult:
+    ) -> StatusResult:
         """
         DEPRECATED: Wait for dependency analysis to complete.
 
@@ -104,7 +107,7 @@ class WaitingService:
             wait_interval: Seconds between attempts (default: 10)
 
         Returns:
-            WaitResult: Result with final status and duration
+            StatusResult: Result with final status and duration
         """
         warnings.warn(
             "client.waiting.wait_for_da() is deprecated. "
@@ -123,7 +126,7 @@ class WaitingService:
 
     def wait_for_extract_archives(
         self, scan_code: str, max_tries: int = 360, wait_interval: int = 10
-    ) -> WaitResult:
+    ) -> StatusResult:
         """
         DEPRECATED: Wait for archive extraction to complete.
 
@@ -136,7 +139,7 @@ class WaitingService:
             wait_interval: Seconds between attempts (default: 10)
 
         Returns:
-            WaitResult: Result with final status and duration
+            StatusResult: Result with final status and duration
         """
         warnings.warn(
             "client.waiting.wait_for_extract_archives() is deprecated. "
@@ -155,7 +158,7 @@ class WaitingService:
 
     def wait_for_report_import(
         self, scan_code: str, max_tries: int = 360, wait_interval: int = 10
-    ) -> WaitResult:
+    ) -> StatusResult:
         """
         DEPRECATED: Wait for SBOM/SPDX report import to complete.
 
@@ -168,7 +171,7 @@ class WaitingService:
             wait_interval: Seconds between attempts (default: 10)
 
         Returns:
-            WaitResult: Result with final status and duration
+            StatusResult: Result with final status and duration
         """
         warnings.warn(
             "client.waiting.wait_for_report_import() is deprecated. "
@@ -195,7 +198,7 @@ class WaitingService:
         process_id: int,
         max_tries: int = 360,
         wait_interval: int = 10,
-    ) -> WaitResult:
+    ) -> StatusResult:
         """
         DEPRECATED: Wait for scan report generation to complete.
 
@@ -209,7 +212,7 @@ class WaitingService:
             wait_interval: Seconds between attempts (default: 10)
 
         Returns:
-            WaitResult: Result with final status and duration
+            StatusResult: Result with final status and duration
         """
         warnings.warn(
             "client.waiting.wait_for_scan_report_completion() is deprecated. "
@@ -233,7 +236,7 @@ class WaitingService:
         process_id: int,
         max_tries: int = 360,
         wait_interval: int = 10,
-    ) -> WaitResult:
+    ) -> StatusResult:
         """
         DEPRECATED: Wait for project report generation to complete.
 
@@ -247,7 +250,7 @@ class WaitingService:
             wait_interval: Seconds between attempts (default: 10)
 
         Returns:
-            WaitResult: Result with final status and duration
+            StatusResult: Result with final status and duration
         """
         warnings.warn(
             "client.waiting.wait_for_project_report_completion() is "
@@ -271,7 +274,7 @@ class WaitingService:
 
     def wait_for_git_clone(
         self, scan_code: str, max_tries: int = 360, wait_interval: int = 10
-    ) -> WaitResult:
+    ) -> StatusResult:
         """
         DEPRECATED: Wait for git clone operation to complete.
 
@@ -283,7 +286,7 @@ class WaitingService:
             wait_interval: Seconds between attempts (default: 10)
 
         Returns:
-            WaitResult: Result with final status and duration
+            StatusResult: Result with final status and duration
         """
         warnings.warn(
             "client.waiting.wait_for_git_clone() is deprecated. "

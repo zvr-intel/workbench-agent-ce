@@ -18,11 +18,10 @@ logger = logging.getLogger("workbench-agent")
 @dataclass
 class StatusResult:
     """
-    Result from a status check operation.
+    Result from a status check or waiting operation.
 
-    This is the standardized format that status checkers return to indicate
-    the current state of an async operation. It provides all information
-    needed by the waiting infrastructure to determine next steps.
+    This unified result type represents the state of an async operation,
+    whether from a one-time status check or after waiting for completion.
 
     Six-State Model:
         - NEW: Operation hasn't been requested yet
@@ -36,8 +35,10 @@ class StatusResult:
         status: Normalized status string (NEW, QUEUED, RUNNING, FINISHED,
             FAILED, CANCELLED)
         raw_data: Original response data from the API
+        duration: Server-side duration in seconds (only set after waiting)
         is_finished: True if operation has completed (success or failure)
         is_failed: True if operation failed or was cancelled
+        success: True if operation completed successfully (backward compat)
         error_message: Optional error message if operation failed
         progress_info: Optional progress information (percentage, files, etc.)
         is_idle: True if operation is idle (safe to start new operations)
@@ -47,8 +48,10 @@ class StatusResult:
 
     status: str
     raw_data: Dict[str, Any]
+    duration: Optional[float] = None
     is_finished: bool = False
     is_failed: bool = False
+    success: bool = True
     error_message: Optional[str] = None
     progress_info: Optional[Dict[str, Any]] = None
     is_idle: bool = False
@@ -110,6 +113,13 @@ class StatusResult:
             "CANCELLED",
         }
 
+        # Set success flag (backward compatibility)
+        if self.status in {"FAILED", "CANCELLED"}:
+            self.success = False
+        elif self.status == "FINISHED":
+            self.success = True
+        # NEW, QUEUED, RUNNING default to True
+
         # Auto-extract error message
         if self.is_failed and not self.error_message:
             self.error_message = self.raw_data.get(
@@ -134,36 +144,9 @@ class StatusResult:
             self.progress_info = progress_data if progress_data else None
 
 
-@dataclass
-class WaitResult:
-    """
-    Result from a waiting operation.
-
-    This structure encapsulates the outcome of waiting for an async
-    operation to complete, including final status, duration, and any
-    error information.
-
-    Attributes:
-        status_data: Final status data from the completed operation
-        duration: Server-side duration in seconds (if available)
-        status: Final status (NEW, QUEUED, RUNNING, FINISHED, FAILED, CANCELLED)
-        success: True if operation completed successfully (backward compatibility)
-        error_message: Error message if operation failed
-    """
-
-    status_data: Dict[str, Any]
-    duration: Optional[float] = None
-    status: str = "FINISHED"
-    success: bool = True
-    error_message: Optional[str] = None
-
-    def __post_init__(self):
-        """Derive success from status if not explicitly set."""
-        if self.status in {"FAILED", "CANCELLED"}:
-            self.success = False
-        elif self.status == "FINISHED":
-            self.success = True
-        # NEW, QUEUED, RUNNING are not terminal, success defaults to True
+# DEPRECATED: WaitResult is merged into StatusResult
+# Kept for backward compatibility - just an alias
+WaitResult = StatusResult
 
 
 # =============================================================================
@@ -233,16 +216,13 @@ def wait_for_completion(
     progress_callback: Optional[
         Callable[[StatusResult, int, int], None]
     ] = None,
-) -> WaitResult:
+) -> StatusResult:
     """
     Generic waiting engine for async operations.
 
     This is the core waiting infrastructure that handles retry logic,
-    timeout detection, and progress reporting. It delegates actual
-    status checking to the provided function.
-
-    Waits until the operation reaches a terminal state (FINISHED, FAILED,
-    or CANCELLED).
+    timeout detection, and progress reporting. Waits until the operation
+    reaches a terminal state (FINISHED, FAILED, or CANCELLED).
 
     Args:
         check_function: Function that returns StatusResult when called
@@ -253,7 +233,7 @@ def wait_for_completion(
             reporting. Called with (StatusResult, attempt, max_tries).
 
     Returns:
-        WaitResult with final status and duration
+        StatusResult with final terminal status and duration
 
     Raises:
         ProcessTimeoutError: If max_tries exceeded
@@ -262,7 +242,7 @@ def wait_for_completion(
 
     Note:
         This function does NOT raise exceptions for FAILED or CANCELLED
-        states. It returns WaitResult with success=False and appropriate
+        states. It returns StatusResult with success=False and appropriate
         status. Callers should check the result status or success flag.
     """
     # Import here to avoid circular imports
@@ -300,21 +280,18 @@ def wait_for_completion(
                         f"({elapsed}s elapsed, status: {result.status})"
                     )
 
-            # Check if complete (terminal state)
+                # Check if complete (terminal state)
             if result.is_terminal:
+                # Extract server duration
+                duration = extract_server_duration(result.raw_data)
+                result.duration = duration
+
                 if result.is_failed:
                     error_msg = result.error_message or "Operation failed"
                     logger.error(f"{operation_name} failed: {error_msg}")
-                    return WaitResult(
-                        status_data=result.raw_data,
-                        duration=extract_server_duration(result.raw_data),
-                        status=result.status,
-                        success=False,
-                        error_message=error_msg,
-                    )
+                    return result
 
                 # Success!
-                duration = extract_server_duration(result.raw_data)
                 if duration:
                     logger.info(
                         "%s completed successfully (%.2fs)",
@@ -329,12 +306,7 @@ def wait_for_completion(
                     logger.info("%s completed successfully", operation_name)
                     print(f"\n{operation_name} completed successfully")
 
-                return WaitResult(
-                    status_data=result.raw_data,
-                    duration=duration,
-                    status=result.status,
-                    success=True,
-                )
+                return result
 
             # Not complete yet, wait
             if attempts < max_tries:
