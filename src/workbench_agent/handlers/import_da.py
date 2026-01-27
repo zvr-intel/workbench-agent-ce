@@ -11,6 +11,9 @@ from workbench_agent.api.exceptions import (
 from workbench_agent.exceptions import WorkbenchAgentError
 from workbench_agent.utilities.error_handling import handler_error_wrapper
 from workbench_agent.utilities.post_import_summary import print_import_summary
+from workbench_agent.utilities.pre_flight_checks import (
+    import_da_pre_flight_check,
+)
 
 if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
@@ -68,21 +71,7 @@ def handle_import_da(
     )
 
     # Ensure scan is idle before starting dependency analysis import
-    # Skip idle checks for new scans (they're guaranteed to be idle)
-    if not scan_is_new:
-        print("\nEnsuring Scan is idle before starting import...")
-        try:
-            client.waiting.wait_for_da(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-        except Exception as e:
-            logger.debug(f"Dependency analysis check skipped: {e}")
-    else:
-        logger.debug(
-            "Skipping idle checks - new scan is guaranteed to be idle"
-        )
+    import_da_pre_flight_check(client, scan_code, scan_is_new, params)
 
     # Upload dependency analysis file
     print("\n--- Uploading Dependency Analysis File ---")
@@ -124,10 +113,11 @@ def handle_import_da(
     try:
         print("\nWaiting for Dependency Analysis import to complete...")
         # Use optimized 3-second wait interval for import-only mode
-        dependency_analysis_status = client.waiting.wait_for_da(
+        da_result = client.status_check.check_dependency_analysis_status(
             scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=3,  # Faster for import-only mode
+            wait=True,
+            wait_retry_count=params.scan_number_of_tries,
+            wait_retry_interval=3,  # Faster for import-only mode
         )
 
         da_completed = True

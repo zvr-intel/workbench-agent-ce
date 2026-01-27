@@ -10,6 +10,9 @@ from workbench_agent.utilities.post_scan_summary import (
     format_duration,
     print_scan_summary,
 )
+from workbench_agent.utilities.pre_flight_checks import (
+    blind_scan_pre_flight_check,
+)
 from workbench_agent.utilities.scan_workflows import determine_scans_to_run
 from workbench_agent.utilities.toolbox_wrapper import ToolboxWrapper
 
@@ -159,51 +162,7 @@ def handle_blind_scan(
         )
 
         # Assert scan is idle before starting blind scan operations
-        # Skip idle checks for new scans (they're guaranteed to be idle)
-        if not scan_is_new:
-            print("\nEnsuring the Scan is idle...")
-            # Check each process type individually (new API pattern)
-            try:
-                # Check status first to inform user if scan is already running
-                scan_status = client.status_check.check_scan_status(
-                    scan_code
-                )
-                if scan_status.status == "RUNNING":
-                    print(
-                        "\nA prior Scan operation is in progress, "
-                        "waiting for it to complete."
-                    )
-                client.waiting.wait_for_scan(
-                    scan_code,
-                    max_tries=params.scan_number_of_tries,
-                    wait_interval=params.scan_wait_time,
-                )
-            except Exception as e:
-                logger.debug(f"Scan status check skipped: {e}")
-
-            try:
-                # Check status first to inform user if DA is already running
-                da_status = (
-                    client.status_check.check_dependency_analysis_status(
-                        scan_code
-                    )
-                )
-                if da_status.status == "RUNNING":
-                    print(
-                        "\nA prior Dependency Analysis operation is in "
-                        "progress, waiting for it to complete."
-                    )
-                client.waiting.wait_for_da(
-                    scan_code,
-                    max_tries=params.scan_number_of_tries,
-                    wait_interval=params.scan_wait_time,
-                )
-            except Exception as e:
-                logger.debug(f"Dependency analysis check skipped: {e}")
-        else:
-            logger.debug(
-                "Skipping idle checks - new scan is guaranteed to be idle"
-            )
+        blind_scan_pre_flight_check(client, scan_code, scan_is_new, params)
 
         # Clear existing scan content (skip for new scans - they're empty)
         if not scan_is_new:
@@ -267,12 +226,13 @@ def handle_blind_scan(
 
             # Wait for dependency analysis to complete
             print("\nWaiting for Dependency Analysis to complete...")
-            result = client.waiting.wait_for_da(
+            da_result = client.status_check.check_dependency_analysis_status(
                 scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
             )
-            durations["dependency_analysis"] = result.duration or 0.0
+            durations["dependency_analysis"] = da_result.duration or 0.0
             da_completed = True
 
         # Start the KB scan (only if run_kb_scan is True)
@@ -362,13 +322,14 @@ def handle_blind_scan(
 
                 try:
                     # Wait for KB scan completion
-                    kb_scan_status = client.waiting.wait_for_scan(
+                    kb_scan_result = client.status_check.check_scan_status(
                         scan_code,
-                        max_tries=params.scan_number_of_tries,
-                        wait_interval=params.scan_wait_time,
+                        wait=True,
+                        wait_retry_count=params.scan_number_of_tries,
+                        wait_retry_interval=params.scan_wait_time,
                         should_track_files=True,
                     )
-                    durations["kb_scan"] = kb_scan_status.duration or 0.0
+                    durations["kb_scan"] = kb_scan_result.duration or 0.0
 
                     # Wait for dependency analysis if requested
                     if "DEPENDENCY_ANALYSIS" in process_types_to_wait:
@@ -376,13 +337,14 @@ def handle_blind_scan(
                             "\nWaiting for Dependency Analysis to complete..."
                         )
                         try:
-                            da_wait_result = client.waiting.wait_for_da(
+                            da_result = client.status_check.check_dependency_analysis_status(
                                 scan_code,
-                                max_tries=params.scan_number_of_tries,
-                                wait_interval=params.scan_wait_time,
+                                wait=True,
+                                wait_retry_count=params.scan_number_of_tries,
+                                wait_retry_interval=params.scan_wait_time,
                             )
                             durations["dependency_analysis"] = (
-                                da_wait_result.duration or 0.0
+                                da_result.duration or 0.0
                             )
                             da_completed = True
                         except Exception as e:

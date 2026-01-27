@@ -1,34 +1,51 @@
 """
-StatusCheckService - Status checking for async Workbench operations.
+StatusCheckService - Status checking and waiting for async Workbench operations.
 
 This service provides specialized status checking methods for different
-operation types. Each operation has its own dedicated method that knows
-how to extract and normalize status from that operation's specific
-response format.
+operation types with optional waiting capability. Each operation has its own
+dedicated method that knows how to extract and normalize status from that
+operation's specific response format.
 
-The service focuses purely on status checking - waiting logic is handled
-by WaitingService which composes this service.
+With wait=True, the service polls until the operation reaches a terminal
+state (FINISHED, FAILED, or CANCELLED).
 
 Architecture:
-    WaitingService → StatusCheckService → Clients (ScansClient, ProjectsClient)
+    Handler → StatusCheckService → Clients (ScansClient, ProjectsClient)
 """
 
 import logging
+import time
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
-from workbench_agent.api.utils.process_waiter import StatusResult
+from workbench_agent.api.exceptions import UnsupportedStatusCheck
+from workbench_agent.api.utils.process_waiter import (
+    StatusResult,
+    WaitResult,
+    wait_for_completion,
+)
 
 logger = logging.getLogger("workbench-agent")
 
 
 class StatusCheckService:
     """
-    Service for checking status of async Workbench operations.
+    Service for checking status and waiting for async Workbench operations.
 
     This service provides specialized status checking methods for each
     operation type. It handles the complexity of different response
     formats and normalizes them into consistent StatusResult objects.
+
+    With wait=True, methods poll until the operation reaches a terminal
+    state (FINISHED, FAILED, or CANCELLED) and return WaitResult.
+
+    Six-State Model:
+    - NEW: Operation hasn't been requested yet (idle)
+    - QUEUED: Operation requested, waiting to start (active)
+    - RUNNING: Operation actively running (active)
+    - FINISHED: Operation completed successfully (terminal)
+    - FAILED: Operation failed (terminal)
+    - CANCELLED: Operation was cancelled (terminal)
 
     Supported Operations:
     - Git clone
@@ -41,14 +58,15 @@ class StatusCheckService:
     Example:
         >>> service = StatusCheckService(scans_client, projects_client)
         >>>
-        >>> # Check scan status
+        >>> # Check scan status (one-time check)
         >>> result = service.check_scan_status("scan_123")
         >>> print(result.status)  # "RUNNING"
-        >>> print(result.is_finished)  # False
+        >>> print(result.is_active)  # True
         >>>
-        >>> # Check git clone status
-        >>> result = service.check_git_clone_status("scan_123")
-        >>> print(result.is_finished)  # True
+        >>> # Wait for scan to complete
+        >>> result = service.check_scan_status("scan_123", wait=True)
+        >>> print(result.status)  # "FINISHED"
+        >>> print(result.success)  # True
     """
 
     def __init__(self, scans_client, projects_client):
@@ -82,8 +100,8 @@ class StatusCheckService:
         - "NOT FINISHED" - operation is in progress
         - "FINISHED" - operation completed
 
-        Normalization rules:
-        - "NOT STARTED" → "FINISHED" (idle state)
+        Normalization rules (six-state model):
+        - "NOT STARTED" → "NEW" (operation not requested)
         - "NOT FINISHED" → "RUNNING" (in progress)
         - "FINISHED" → "FINISHED" (completed)
         - Extract from 'data' field (the git clone status string)
@@ -94,7 +112,8 @@ class StatusCheckService:
                 to {"data": <status_string>})
 
         Returns:
-            Normalized uppercase status string
+            Normalized status string (NEW, QUEUED, RUNNING, FINISHED,
+            FAILED, CANCELLED)
         """
         try:
             if isinstance(data, str):
@@ -108,21 +127,19 @@ class StatusCheckService:
                 )
                 return "ACCESS_ERROR"
 
-            # CRITICAL: Treat "NOT STARTED" as idle/finished state
-            # A "NOT STARTED" process hasn't started yet, so it's
-            # effectively idle
+            # Treat "NOT STARTED" as NEW (operation hasn't been requested)
             if raw_status == "NOT STARTED":
                 logger.debug(
                     "Git operation status is NOT STARTED - "
-                    "treating as idle"
+                    "treating as NEW"
                 )
-                return "FINISHED"
+                return "NEW"
 
             # Normalize "NOT FINISHED" to "RUNNING" for consistency
             if raw_status == "NOT FINISHED":
                 logger.debug(
                     "Git operation status is NOT FINISHED - "
-                    "treating as running"
+                    "treating as RUNNING"
                 )
                 return "RUNNING"
 
@@ -138,7 +155,7 @@ class StatusCheckService:
 
         Standard scan operations have complex response formats with
         different status indicators. This method handles multiple status
-        sources and provides consistent normalization.
+        sources and provides consistent normalization to the six-state model.
 
         Status Priority Order:
         1. progress_state (for REPORT_GENERATION operations)
@@ -146,30 +163,34 @@ class StatusCheckService:
         3. status field (standard operations)
         4. Fallback to "UNKNOWN"
 
-        Normalization rules:
-        - "NEW" → "FINISHED" (idle state)
-        - is_finished=1/true → "FINISHED"
-        - All statuses uppercased
+        Six-State Normalization:
+        - "NEW" → "NEW" (preserve - operation not requested)
+        - "QUEUED", "PENDING" → "QUEUED"
+        - "RUNNING", "IN_PROGRESS" → "RUNNING"
+        - "FINISHED", "COMPLETE" → "FINISHED"
+        - "FAILED", "ERROR" → "FAILED"
+        - "CANCELLED" → "CANCELLED"
+        - is_finished=true + non-failure → "FINISHED"
+        - is_finished=true + failure → "FAILED" or "CANCELLED"
 
         Args:
             data: Response data dictionary from scans->check_status
 
         Returns:
-            Normalized uppercase status string
+            Normalized status string (NEW, QUEUED, RUNNING, FINISHED,
+            FAILED, CANCELLED)
         """
         try:
             # Check progress_state first (used by REPORT_GENERATION)
             progress_state = data.get("progress_state")
             if progress_state:
                 progress_state_upper = str(progress_state).upper()
-
-                # CRITICAL: Treat "NEW" as idle/finished state
+                # Preserve NEW state (don't normalize to FINISHED)
                 if progress_state_upper == "NEW":
                     logger.debug(
-                        "Scan progress_state is NEW - treating as idle"
+                        "Scan progress_state is NEW - preserving NEW state"
                     )
-                    return "FINISHED"
-
+                    return "NEW"
                 return progress_state_upper
 
             # Check is_finished flag (boolean completion indicator)
@@ -180,19 +201,24 @@ class StatusCheckService:
                     isinstance(is_finished, str)
                     and is_finished.lower() in ("1", "true")
                 ):
-                    return "FINISHED"
+                    # is_finished=true, but we need to check if it's a failure
+                    status_field = data.get("status", "").upper()
+                    if status_field in {"FAILED", "ERROR"}:
+                        return "FAILED"
+                    elif status_field == "CANCELLED":
+                        return "CANCELLED"
+                    else:
+                        return "FINISHED"
                 # If is_finished exists but is False/0, continue checking
 
             # Fall back to status field (standard operations)
             status = data.get("status")
             if status:
                 status_upper = str(status).upper()
-
-                # CRITICAL: Treat "NEW" as idle/finished state
+                # Preserve NEW state (don't normalize to FINISHED)
                 if status_upper == "NEW":
-                    logger.debug("Scan status is NEW - treating as idle")
-                    return "FINISHED"
-
+                    logger.debug("Scan status is NEW - preserving NEW state")
+                    return "NEW"
                 return status_upper
 
             # No status information found
@@ -213,30 +239,29 @@ class StatusCheckService:
         just 'progress_state'. Unlike scan operations, they don't have
         'is_finished' flags or complex status structures.
 
-        Normalization rules:
-        - "NEW" → "FINISHED" (idle state)
-        - progress_state uppercased
+        Six-State Normalization:
+        - "NEW" → "NEW" (preserve - operation not requested)
+        - progress_state uppercased for other states
 
         Args:
             data: Response data from projects->check_status
 
         Returns:
-            Normalized uppercase status string
+            Normalized status string (NEW, QUEUED, RUNNING, FINISHED,
+            FAILED, CANCELLED)
         """
         try:
             # Project reports primarily use progress_state field
             progress_state = data.get("progress_state")
             if progress_state:
                 progress_state_upper = str(progress_state).upper()
-
-                # CRITICAL: Treat "NEW" as idle/finished state
+                # Preserve NEW state (don't normalize to FINISHED)
                 if progress_state_upper == "NEW":
                     logger.debug(
                         "Project report progress_state is NEW - "
-                        "treating as idle"
+                        "preserving NEW state"
                     )
-                    return "FINISHED"
-
+                    return "NEW"
                 return progress_state_upper
 
             # No progress_state found
@@ -257,15 +282,27 @@ class StatusCheckService:
 
     # --- GIT OPERATIONS ---
 
-    def check_git_clone_status(self, scan_code: str) -> StatusResult:
+    def check_git_clone_status(
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 3,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of a Git clone operation.
 
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult with git clone status information
+            StatusResult if wait=False, WaitResult if wait=True
         """
         # Get raw status data from the API (always returns dict)
         status_data = self._scans.check_status_download_content_from_git(
@@ -276,44 +313,104 @@ class StatusCheckService:
         normalized_status = self._git_status_accessor(status_data)
 
         # Create standardized result
-        return StatusResult(
+        result = StatusResult(
             status=normalized_status,
             raw_data=status_data,
         )
 
+        if wait:
+            return wait_for_completion(
+                check_function=lambda: self.check_git_clone_status(
+                    scan_code, wait=False
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=f"Git Clone '{scan_code}'",
+            )
+
+        return result
+
     # --- SCAN OPERATIONS ---
 
-    def check_scan_status(self, scan_code: str) -> StatusResult:
+    def check_scan_status(
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+        should_track_files: bool = False,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of a KB scan operation.
 
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
+            should_track_files: Show detailed file progress when waiting
+                (default: False, only used if wait=True)
 
         Returns:
-            StatusResult with scan status information
+            StatusResult if wait=False, WaitResult if wait=True
+
+        Note:
+            Terminal states are: FINISHED, FAILED, CANCELLED. Waiting
+            continues until one of these states is reached.
         """
         status_data = self._scans.check_status(scan_code, "SCAN")
         normalized_status = self._standard_scan_status_accessor(
             status_data
         )
 
-        return StatusResult(
+        result = StatusResult(
             status=normalized_status,
             raw_data=status_data,
         )
 
+        if wait:
+            progress_callback = None
+            if should_track_files:
+                progress_callback = self._create_scan_progress_callback(
+                    scan_code
+                )
+
+            return wait_for_completion(
+                check_function=lambda: self.check_scan_status(
+                    scan_code, wait=False
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=f"KB Scan '{scan_code}'",
+                progress_callback=progress_callback,
+            )
+
+        return result
+
     def check_dependency_analysis_status(
-        self, scan_code: str
-    ) -> StatusResult:
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of a dependency analysis operation.
 
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult with dependency analysis status information
+            StatusResult if wait=False, WaitResult if wait=True
         """
         status_data = self._scans.check_status(
             scan_code, "DEPENDENCY_ANALYSIS"
@@ -322,54 +419,131 @@ class StatusCheckService:
             status_data
         )
 
-        return StatusResult(
+        result = StatusResult(
             status=normalized_status,
             raw_data=status_data,
         )
 
+        if wait:
+            return wait_for_completion(
+                check_function=lambda: self.check_dependency_analysis_status(
+                    scan_code, wait=False
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=f"Dependency Analysis '{scan_code}'",
+            )
+
+        return result
+
     def check_extract_archives_status(
-        self, scan_code: str
-    ) -> StatusResult:
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of an archive extraction operation.
 
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult with archive extraction status information
+            StatusResult if wait=False, WaitResult if wait=True
         """
-        status_data = self._scans.check_status(
-            scan_code, "EXTRACT_ARCHIVES"
-        )
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
+        try:
+            status_data = self._scans.check_status(
+                scan_code, "EXTRACT_ARCHIVES"
+            )
+            normalized_status = self._standard_scan_status_accessor(
+                status_data
+            )
 
-        return StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
-        )
+            result = StatusResult(
+                status=normalized_status,
+                raw_data=status_data,
+            )
 
-    def check_report_import_status(self, scan_code: str) -> StatusResult:
+            if wait:
+                return wait_for_completion(
+                    check_function=lambda: self.check_extract_archives_status(
+                        scan_code, wait=False
+                    ),
+                    max_tries=wait_retry_count,
+                    wait_interval=wait_retry_interval,
+                    operation_name=f"Extract Archives '{scan_code}'",
+                )
+
+            return result
+        except UnsupportedStatusCheck:
+            # Graceful degradation for Workbench < 25.1.0
+            if wait:
+                logger.info(
+                    "Archive extraction status checking not supported on "
+                    "this Workbench version, using fallback wait (5 seconds)"
+                )
+                print(
+                    "Using fallback wait for archive extraction "
+                    "(5 seconds)..."
+                )
+                time.sleep(5)
+                return WaitResult(
+                    status_data={}, duration=None, status="FINISHED", success=True
+                )
+            else:
+                # Re-raise if not waiting
+                raise
+
+    def check_report_import_status(
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of a report import operation.
 
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult with report import status information
+            StatusResult if wait=False, WaitResult if wait=True
         """
         status_data = self._scans.check_status(scan_code, "REPORT_IMPORT")
         normalized_status = self._standard_scan_status_accessor(
             status_data
         )
 
-        return StatusResult(
+        result = StatusResult(
             status=normalized_status,
             raw_data=status_data,
         )
+
+        if wait:
+            return wait_for_completion(
+                check_function=lambda: self.check_report_import_status(
+                    scan_code, wait=False
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=f"Report Import '{scan_code}'",
+            )
+
+        return result
 
     # --- NOTICE EXTRACTION OPERATIONS ---
 
@@ -448,17 +622,28 @@ class StatusCheckService:
     # --- REPORT OPERATIONS ---
 
     def check_scan_report_status(
-        self, scan_code: str, process_id: int
-    ) -> StatusResult:
+        self,
+        scan_code: str,
+        process_id: int,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of a scan report generation operation.
 
         Args:
             scan_code: Code of the scan
             process_id: Process ID of the report generation
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult with scan report generation status
+            StatusResult if wait=False, WaitResult if wait=True
         """
         status_data = self._scans.check_status(
             scan_code, "REPORT_GENERATION", process_id=str(process_id)
@@ -467,23 +652,46 @@ class StatusCheckService:
             status_data
         )
 
-        return StatusResult(
+        result = StatusResult(
             status=normalized_status,
             raw_data=status_data,
         )
 
+        if wait:
+            return wait_for_completion(
+                check_function=lambda: self.check_scan_report_status(
+                    scan_code, process_id, wait=False
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=f"Scan Report '{scan_code}'",
+            )
+
+        return result
+
     def check_project_report_status(
-        self, process_id: int, project_code: str
-    ) -> StatusResult:
+        self,
+        process_id: int,
+        project_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of a project report generation operation.
 
         Args:
             process_id: Process ID of the report generation
             project_code: Code of the project (for logging)
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult with project report generation status
+            StatusResult if wait=False, WaitResult if wait=True
         """
         # Call the projects API with report generation type
         raw_status_data = self._projects.check_status(
@@ -493,25 +701,48 @@ class StatusCheckService:
             raw_status_data
         )
 
-        return StatusResult(
+        result = StatusResult(
             status=normalized_status,
             raw_data=raw_status_data,
         )
 
+        if wait:
+            return wait_for_completion(
+                check_function=lambda: self.check_project_report_status(
+                    process_id, project_code, wait=False
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=f"Project Report '{project_code}'",
+            )
+
+        return result
+
     # --- DELETE OPERATIONS ---
 
     def check_delete_scan_status(
-        self, scan_code: str, process_id: int
-    ) -> StatusResult:
+        self,
+        scan_code: str,
+        process_id: int,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> Union[StatusResult, WaitResult]:
         """
         Check the status of a scan deletion operation.
 
         Args:
             scan_code: Code of the scan
             process_id: Process ID of the delete operation
+            wait: If True, wait until operation reaches terminal state
+                (returns WaitResult)
+            wait_retry_count: Maximum attempts when waiting (default: 360,
+                only used if wait=True)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10, only used if wait=True)
 
         Returns:
-            StatusResult with delete scan status information
+            StatusResult if wait=False, WaitResult if wait=True
         """
         status_data = self._scans.check_status(
             scan_code, "DELETE_SCAN", process_id=str(process_id)
@@ -520,64 +751,100 @@ class StatusCheckService:
             status_data
         )
 
-        return StatusResult(
+        result = StatusResult(
             status=normalized_status,
             raw_data=status_data,
         )
 
+        if wait:
+            return wait_for_completion(
+                check_function=lambda: self.check_delete_scan_status(
+                    scan_code, process_id, wait=False
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=f"Delete Scan '{scan_code}'",
+            )
+
+        return result
+
     # =====================================================================
-    # UTILITY METHODS
+    # WAITING INFRASTRUCTURE
     # =====================================================================
 
-    def extract_server_duration(
-        self, raw_data: Dict[str, Any]
-    ) -> Optional[float]:
+    def _create_scan_progress_callback(self, scan_code: str):
         """
-        Extract actual process duration from server timestamps.
+        Create a stateful progress callback for scan file tracking.
 
-        This method only works for scan operations that have started/
-        finished timestamps. Git operations use a different response
-        format and don't provide duration information.
+        This creates a callback that tracks and displays scan progress
+        with smart printing that only shows details on changes or periodic
+        intervals.
 
         Args:
-            raw_data: Raw response data from the API
+            scan_code: Code of the scan (for display purposes)
 
         Returns:
-            Server-side duration in seconds, or None if unavailable
+            Callable: Progress callback function
         """
-        if not isinstance(raw_data, dict):
-            return None
 
-        # Check if this is a git operation response format
-        # Git responses look like: {"data": "FINISHED"}
-        if (
-            len(raw_data) == 1
-            and "data" in raw_data
-            and isinstance(raw_data["data"], str)
-        ):
-            logger.debug(
-                "Git operation detected - no server duration available"
-            )
-            return None
+        class ScanProgressTracker:
+            """Stateful progress tracker for scan operations."""
 
-        started = raw_data.get("started")
-        finished = raw_data.get("finished")
+            def __init__(self):
+                self.last_status = None
+                self.last_state = None
+                self.last_step = None
 
-        if not started or not finished:
-            return None
+            def callback(self, status_result, attempt, max_tries):
+                """Progress callback that tracks file progress."""
+                # Extract progress information
+                raw_data = status_result.raw_data
+                current_state = raw_data.get("state", "")
+                current_step = raw_data.get("current_step", "")
+                percentage = raw_data.get("percentage_done", "")
 
-        try:
-            # Parse timestamps in format "2025-08-08 00:43:31"
-            started_dt = datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
-            finished_dt = datetime.strptime(finished, "%Y-%m-%d %H:%M:%S")
+                # File tracking
+                total_files = raw_data.get("total_files", 0)
+                current_file = raw_data.get("current_file", 0)
 
-            server_duration = (finished_dt - started_dt).total_seconds()
-            logger.debug(
-                f"Extracted server duration: {server_duration:.2f}s "
-                f"(started: {started}, finished: {finished})"
-            )
-            return server_duration
+                # Determine if we should print details
+                should_print = (
+                    attempt == 1  # First check
+                    or attempt % 10 == 0  # Periodic (every ~minute)
+                    or status_result.status != self.last_status
+                    or current_state != self.last_state
+                    or current_step != self.last_step
+                )
 
-        except (ValueError, TypeError) as e:
-            logger.debug(f"Could not parse server timestamps: {e}")
-            return None
+                if should_print:
+                    # Build detailed status message
+                    msg = f"\nScan '{scan_code}' status: "
+                    msg += status_result.status
+
+                    if current_state:
+                        msg += f" ({current_state})"
+
+                    # Show file progress if available
+                    if total_files and int(total_files) > 0:
+                        msg += f" - File {current_file}/{total_files}"
+                        if percentage:
+                            msg += f" ({percentage})"
+                    elif percentage:
+                        msg += f" - Progress: {percentage}"
+
+                    if current_step:
+                        msg += f" - Step: {current_step}"
+
+                    msg += f". Attempt {attempt}/{max_tries}"
+                    print(msg, end="", flush=True)
+
+                    # Update tracking state
+                    self.last_status = status_result.status
+                    self.last_state = current_state
+                    self.last_step = current_step
+                else:
+                    # Just show a dot for non-significant updates
+                    print(".", end="", flush=True)
+
+        tracker = ScanProgressTracker()
+        return tracker.callback

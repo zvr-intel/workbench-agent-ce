@@ -11,6 +11,9 @@ from workbench_agent.api.exceptions import (
 from workbench_agent.exceptions import WorkbenchAgentError
 from workbench_agent.utilities.error_handling import handler_error_wrapper
 from workbench_agent.utilities.post_scan_summary import print_scan_summary
+from workbench_agent.utilities.pre_flight_checks import (
+    scan_git_pre_flight_check,
+)
 from workbench_agent.utilities.scan_workflows import determine_scans_to_run
 
 if TYPE_CHECKING:
@@ -75,67 +78,7 @@ def handle_scan_git(
     print("\n--- Repo Clone & Scan Prep ---")
 
     # Ensure scan is idle before triggering Git clone
-    # Skip idle checks for new scans (they're guaranteed to be idle)
-    if not scan_is_new:
-        print("Ensuring the Scan is idle before Git clone...")
-        # Check each process type individually (new API pattern)
-        try:
-            # Check status first to inform user if git clone is already running
-            git_status = client.status_check.check_git_clone_status(
-                scan_code
-            )
-            if git_status.status == "RUNNING":
-                print(
-                    "\nA prior Git Clone operation is in progress, "
-                    "waiting for it to complete..."
-                )
-            client.waiting.wait_for_git_clone(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-        except Exception as e:
-            logger.debug(f"Git clone status check skipped: {e}")
-
-        try:
-            # Check status first to inform user if scan is already running
-            scan_status = client.status_check.check_scan_status(scan_code)
-            if scan_status.status == "RUNNING":
-                print(
-                    "\nA prior Scan operation is in progress, "
-                    "waiting for it to complete."
-                )
-            client.waiting.wait_for_scan(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-        except Exception as e:
-            logger.debug(f"Scan status check skipped: {e}")
-
-        try:
-            # Check status first to inform user if DA is already running
-            da_status = (
-                client.status_check.check_dependency_analysis_status(
-                    scan_code
-                )
-            )
-            if da_status.status == "RUNNING":
-                print(
-                    "\nA prior Dependency Analysis operation is in progress, "
-                    "waiting for it to complete."
-                )
-            client.waiting.wait_for_da(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
-        except Exception as e:
-            logger.debug(f"Dependency analysis check skipped: {e}")
-    else:
-        logger.debug(
-            "Skipping idle checks - new scan is guaranteed to be idle"
-        )
+    scan_git_pre_flight_check(client, scan_code, scan_is_new, params)
 
     # Trigger Git clone
     git_ref_type = (
@@ -151,13 +94,14 @@ def handle_scan_git(
     # Download content from Git
     try:
         client.scans.download_content_from_git(scan_code)
-        git_clone_status = client.waiting.wait_for_git_clone(
+        git_clone_result = client.status_check.check_git_clone_status(
             scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=3,  # Git clone typically finishes quickly
+            wait=True,
+            wait_retry_count=params.scan_number_of_tries,
+            wait_retry_interval=3,  # Git clone typically finishes quickly
         )
         # Store git clone duration
-        durations["git_clone"] = git_clone_status.duration or 0.0
+        durations["git_clone"] = git_clone_result.duration or 0.0
         print("Git Clone Completed.")
     except Exception as e:
         logger.error(
@@ -229,16 +173,15 @@ def handle_scan_git(
             # Wait for dependency analysis to complete
             print("\nWaiting for Dependency Analysis to complete...")
             try:
-                da_wait_result = client.waiting.wait_for_da(
+                da_result = client.status_check.check_dependency_analysis_status(
                     scan_code,
-                    max_tries=params.scan_number_of_tries,
-                    wait_interval=params.scan_wait_time,
+                    wait=True,
+                    wait_retry_count=params.scan_number_of_tries,
+                    wait_retry_interval=params.scan_wait_time,
                 )
 
                 # Store the duration
-                durations["dependency_analysis"] = (
-                    da_wait_result.duration or 0.0
-                )
+                durations["dependency_analysis"] = da_result.duration or 0.0
                 da_completed = True
 
                 # Mark scan as completed for result processing
@@ -355,13 +298,14 @@ def handle_scan_git(
 
                 try:
                     # Wait for KB scan completion
-                    kb_scan_status = client.waiting.wait_for_scan(
+                    kb_scan_result = client.status_check.check_scan_status(
                         scan_code,
-                        max_tries=params.scan_number_of_tries,
-                        wait_interval=params.scan_wait_time,
+                        wait=True,
+                        wait_retry_count=params.scan_number_of_tries,
+                        wait_retry_interval=params.scan_wait_time,
                         should_track_files=True,
                     )
-                    durations["kb_scan"] = kb_scan_status.duration or 0.0
+                    durations["kb_scan"] = kb_scan_result.duration or 0.0
                     scan_completed = True
 
                     # Wait for dependency analysis if requested
@@ -370,13 +314,14 @@ def handle_scan_git(
                             "\nWaiting for Dependency Analysis to complete..."
                         )
                         try:
-                            da_wait_result = client.waiting.wait_for_da(
+                            da_result = client.status_check.check_dependency_analysis_status(
                                 scan_code,
-                                max_tries=params.scan_number_of_tries,
-                                wait_interval=params.scan_wait_time,
+                                wait=True,
+                                wait_retry_count=params.scan_number_of_tries,
+                                wait_retry_interval=params.scan_wait_time,
                             )
                             durations["dependency_analysis"] = (
-                                da_wait_result.duration or 0.0
+                                da_result.duration or 0.0
                             )
                             da_completed = True
                         except Exception as e:

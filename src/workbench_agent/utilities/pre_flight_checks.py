@@ -47,56 +47,59 @@ def scan_pre_flight_check(
 
     print("\nEnsuring the Scan is idle before uploading code...")
 
-    # Check each process type individually (new API pattern)
+    # Check each process type individually
     try:
-        # Check status first to inform user if extraction is running
-        extract_status = (
-            client.status_check.check_extract_archives_status(scan_code)
+        # Check if extraction is active
+        extract_status = client.status_check.check_extract_archives_status(
+            scan_code
         )
-        if extract_status.status == "RUNNING":
+        if extract_status.is_active:
             print(
                 "\nA prior Archive Extraction operation is in progress, "
                 "waiting for it to complete."
             )
-        client.waiting.wait_for_extract_archives(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_extract_archives_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Extract archives check skipped: {e}")
 
     try:
-        # Check status first to inform user if scan is already running
+        # Check if scan is active
         scan_status = client.status_check.check_scan_status(scan_code)
-        if scan_status.status == "RUNNING":
+        if scan_status.is_active:
             print(
                 "\nA prior Scan operation is in progress, "
                 "waiting for it to complete."
             )
-        client.waiting.wait_for_scan(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_scan_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Scan status check skipped: {e}")
 
     try:
-        # Check status first to inform user if DA is already running
-        da_status = (
-            client.status_check.check_dependency_analysis_status(scan_code)
+        # Check if DA is active
+        da_status = client.status_check.check_dependency_analysis_status(
+            scan_code
         )
-        if da_status.status == "RUNNING":
+        if da_status.is_active:
             print(
                 "\nA prior Dependency Analysis operation is in progress, "
                 "waiting for it to complete."
             )
-        client.waiting.wait_for_da(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_dependency_analysis_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Dependency analysis check skipped: {e}")
 
@@ -134,54 +137,57 @@ def scan_git_pre_flight_check(
 
     print("Ensuring the Scan is idle before Git clone...")
 
-    # Check each process type individually (new API pattern)
+    # Check each process type individually
     try:
-        # Check status first to inform user if git clone is already running
+        # Check if git clone is active
         git_status = client.status_check.check_git_clone_status(scan_code)
-        if git_status.status == "RUNNING":
+        if git_status.is_active:
             print(
                 "\nA prior Git Clone operation is in progress, "
                 "waiting for it to complete..."
             )
-        client.waiting.wait_for_git_clone(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_git_clone_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Git clone status check skipped: {e}")
 
     try:
-        # Check status first to inform user if scan is already running
+        # Check if scan is active
         scan_status = client.status_check.check_scan_status(scan_code)
-        if scan_status.status == "RUNNING":
+        if scan_status.is_active:
             print(
                 "\nA prior Scan operation is in progress, "
                 "waiting for it to complete."
             )
-        client.waiting.wait_for_scan(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_scan_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Scan status check skipped: {e}")
 
     try:
-        # Check status first to inform user if DA is already running
-        da_status = (
-            client.status_check.check_dependency_analysis_status(scan_code)
+        # Check if DA is active
+        da_status = client.status_check.check_dependency_analysis_status(
+            scan_code
         )
-        if da_status.status == "RUNNING":
+        if da_status.is_active:
             print(
                 "\nA prior Dependency Analysis operation is in progress, "
                 "waiting for it to complete."
             )
-        client.waiting.wait_for_da(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_dependency_analysis_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Dependency analysis check skipped: {e}")
 
@@ -218,38 +224,40 @@ def blind_scan_pre_flight_check(
 
     print("\nEnsuring the Scan is idle...")
 
-    # Check each process type individually (new API pattern)
+    # Check each process type individually
     try:
-        # Check status first to inform user if scan is already running
+        # Check if scan is active
         scan_status = client.status_check.check_scan_status(scan_code)
-        if scan_status.status == "RUNNING":
+        if scan_status.is_active:
             print(
                 "\nA prior Scan operation is in progress, "
                 "waiting for it to complete."
             )
-        client.waiting.wait_for_scan(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_scan_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Scan status check skipped: {e}")
 
     try:
-        # Check status first to inform user if DA is already running
-        da_status = (
-            client.status_check.check_dependency_analysis_status(scan_code)
+        # Check if DA is active
+        da_status = client.status_check.check_dependency_analysis_status(
+            scan_code
         )
-        if da_status.status == "RUNNING":
+        if da_status.is_active:
             print(
                 "\nA prior Dependency Analysis operation is in "
                 "progress, waiting for it to complete."
             )
-        client.waiting.wait_for_da(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_dependency_analysis_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Dependency analysis check skipped: {e}")
 
@@ -285,11 +293,17 @@ def import_da_pre_flight_check(
     print("\nEnsuring Scan is idle before starting import...")
 
     try:
-        client.waiting.wait_for_da(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
+        # Check if DA is active and wait if needed
+        da_status = client.status_check.check_dependency_analysis_status(
+            scan_code
         )
+        if da_status.is_active:
+            client.status_check.check_dependency_analysis_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Dependency analysis check skipped: {e}")
 
@@ -325,11 +339,17 @@ def import_sbom_pre_flight_check(
     print("\nEnsuring the Scan is idle before starting SBOM import...")
 
     try:
-        client.waiting.wait_for_report_import(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
+        # Check if report import is active and wait if needed
+        import_status = client.status_check.check_report_import_status(
+            scan_code
         )
+        if import_status.is_active:
+            client.status_check.check_report_import_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
     except Exception as e:
         logger.debug(f"Report import check skipped: {e}")
 
@@ -363,18 +383,19 @@ def show_results_pre_flight_check(
         # Check if KB scan is complete
         logger.debug("Checking KB scan completion status...")
         try:
-            # Check status first to inform user if scan is still running
+            # Check if scan is active
             scan_status = client.status_check.check_scan_status(scan_code)
-            if scan_status.status == "RUNNING":
+            if scan_status.is_active:
                 print(
                     "\nKB Scan is still in progress, "
                     "waiting for it to complete..."
                 )
-            client.waiting.wait_for_scan(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
+                client.status_check.check_scan_status(
+                    scan_code,
+                    wait=True,
+                    wait_retry_count=params.scan_number_of_tries,
+                    wait_retry_interval=params.scan_wait_time,
+                )
         except Exception as e:
             # Older Workbench versions might not support status checking
             logger.debug(f"Scan status check not available: {e}")
@@ -382,20 +403,21 @@ def show_results_pre_flight_check(
         # Check if dependency analysis is complete (if applicable)
         logger.debug("Checking dependency analysis completion status...")
         try:
-            # Check status first to inform user if DA is still running
-            da_status = (
-                client.status_check.check_dependency_analysis_status(scan_code)
+            # Check if DA is active
+            da_status = client.status_check.check_dependency_analysis_status(
+                scan_code
             )
-            if da_status.status == "RUNNING":
+            if da_status.is_active:
                 print(
                     "\nDependency Analysis is still in progress, "
                     "waiting for it to complete..."
                 )
-            client.waiting.wait_for_da(
-                scan_code,
-                max_tries=params.scan_number_of_tries,
-                wait_interval=params.scan_wait_time,
-            )
+                client.status_check.check_dependency_analysis_status(
+                    scan_code,
+                    wait=True,
+                    wait_retry_count=params.scan_number_of_tries,
+                    wait_retry_interval=params.scan_wait_time,
+                )
         except Exception as e:
             # Dependency analysis might not exist or be supported
             logger.debug(f"Dependency analysis check not available: {e}")
@@ -442,33 +464,35 @@ def evaluate_gates_pre_flight_check(
     print("\nEnsuring scans finished before evaluating gates...")
 
     try:
+        # Check if scan is active
         scan_status = client.status_check.check_scan_status(scan_code)
-        if scan_status.status == "RUNNING":
+        if scan_status.is_active:
             print(
                 "KB Scan is still in progress, "
                 "waiting for it to complete..."
             )
+            client.status_check.check_scan_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
 
-        client.waiting.wait_for_scan(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
-
+        # Check if DA is active
         da_status = client.status_check.check_dependency_analysis_status(
             scan_code
         )
-        if da_status.status == "RUNNING":
+        if da_status.is_active:
             print(
                 "Dependency Analysis is still in progress, "
                 "waiting for it to complete..."
             )
-
-        client.waiting.wait_for_da(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_dependency_analysis_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
 
         logger.info(
             "Verified all Scan processes are idle. Checking gates..."
@@ -507,20 +531,20 @@ def download_reports_pre_flight_check(
     """
     print("\nChecking scan completion status...")
 
-    # Wait for KB scan using check-first pattern
+    # Wait for KB scan
     try:
         scan_status = client.status_check.check_scan_status(scan_code)
-        if scan_status.status == "RUNNING":
+        if scan_status.is_active:
             print(
                 "\nKB Scan is still in progress, "
                 "waiting for it to complete..."
             )
-
-        client.waiting.wait_for_scan(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_scan_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
         print("KB Scan has completed successfully.")
     except Exception as e:
         print(f"\nWarning: KB Scan did not complete in time: {e}")
@@ -530,22 +554,22 @@ def download_reports_pre_flight_check(
             f"incomplete KB scan: {e}"
         )
 
-    # Wait for dependency analysis using check-first pattern
+    # Wait for dependency analysis
     try:
-        da_status = (
-            client.status_check.check_dependency_analysis_status(scan_code)
+        da_status = client.status_check.check_dependency_analysis_status(
+            scan_code
         )
-        if da_status.status == "RUNNING":
+        if da_status.is_active:
             print(
                 "\nDependency Analysis is still in progress, "
                 "waiting for it to complete..."
             )
-
-        client.waiting.wait_for_da(
-            scan_code,
-            max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time,
-        )
+            client.status_check.check_dependency_analysis_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=params.scan_wait_time,
+            )
         print("Dependency Analysis has completed successfully.")
     except Exception as e:
         print(
