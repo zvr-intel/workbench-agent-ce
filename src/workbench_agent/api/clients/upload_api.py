@@ -54,7 +54,7 @@ class UploadsClient:
     """
 
     # Upload Constants (HTTP implementation details)
-    CHUNK_SIZE = 5 * 1024 * 1024  # 5MB
+    CHUNK_SIZE = 7 * 1024 * 1024  # 5MB
     MAX_CHUNK_RETRIES = 3
     PROGRESS_UPDATE_INTERVAL = 20  # Percent
     SMALL_FILE_CHUNK_THRESHOLD = 5  # Always show progress for ≤5 chunks
