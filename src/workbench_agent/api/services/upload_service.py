@@ -65,9 +65,9 @@ class UploadService:
     """
 
     # Upload strategy constants (business logic)
-    # Files larger than this threshold will use chunked upload
-    # This can be configured by Workbench admins via PHP/server settings
-    CHUNKED_UPLOAD_THRESHOLD = 16 * 1024 * 1024  # 16MB
+    # Files larger than this threshold use chunked upload (matches typical
+    # PHP post_max_size / NGINX client_max_body_size, e.g. 8MB).
+    CHUNKED_UPLOAD_THRESHOLD = 8 * 1024 * 1024  # 8MB
 
     def __init__(self, uploads_client):
         """
