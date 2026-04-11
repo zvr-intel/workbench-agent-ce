@@ -519,6 +519,42 @@ def test_check_status_success(mock_send, scans_client):
 
 
 @patch.object(BaseAPI, "_send_request")
+def test_check_status_delete_scan_omits_scan_code(mock_send, scans_client):
+    """DELETE_SCAN polling uses process_id only so deleted rows do not break status."""
+    mock_send.return_value = {
+        "status": "1",
+        "data": {"progress_state": "FINISHED", "process_id": 789},
+    }
+    out = scans_client.check_status(None, "DELETE_SCAN", process_id=789)
+    assert out["progress_state"] == "FINISHED"
+    payload = mock_send.call_args[0][0]
+    assert "scan_code" not in payload["data"]
+    assert payload["data"]["type"] == "DELETE_SCAN"
+    assert payload["data"]["process_id"] == "789"
+
+
+@patch.object(BaseAPI, "_send_request")
+def test_check_status_delete_scan_data_bool_true_means_finished(
+    mock_send, scans_client,
+):
+    """API may return data=true with message when deletion is complete."""
+    mock_send.return_value = {
+        "status": "1",
+        "data": True,
+        "message": "Scan was deleted successfully",
+    }
+    out = scans_client.check_status(None, "DELETE_SCAN", process_id=28371)
+    assert out["progress_state"] == "FINISHED"
+    assert out["is_finished"] is True
+    assert out["message"] == "Scan was deleted successfully"
+
+
+def test_check_status_requires_scan_code_or_process_id(scans_client):
+    with pytest.raises(ValueError, match="scan_code or process_id"):
+        scans_client.check_status(None, "DELETE_SCAN")
+
+
+@patch.object(BaseAPI, "_send_request")
 def test_check_status_scan_not_found(mock_send, scans_client):
     mock_send.return_value = {"status": "0", "error": "Scan not found"}
     with pytest.raises(ScanNotFoundError, match="Scan 'scan1' not found"):

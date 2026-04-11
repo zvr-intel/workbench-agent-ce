@@ -79,7 +79,7 @@ class ScanDeletionService:
         *,
         delete_identifications: bool = True,
         wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
+        wait_retry_interval: int = 2,
     ) -> StatusResult:
         """
         Queue ``scans/delete`` and poll until deletion completes or fails.
@@ -88,7 +88,7 @@ class ScanDeletionService:
             scan_code: Scan code (already resolved)
             delete_identifications: Maps to API ``delete_identifications`` ``1``/``0``
             wait_retry_count: Max status polls when waiting
-            wait_retry_interval: Seconds between polls
+            wait_retry_interval: Seconds between polls (default 2)
 
         Returns:
             StatusResult: Terminal state when the delete job completes

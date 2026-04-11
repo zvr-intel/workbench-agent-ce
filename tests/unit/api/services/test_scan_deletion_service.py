@@ -35,7 +35,7 @@ def test_delete_scan_success():
         1001,
         wait=True,
         wait_retry_count=360,
-        wait_retry_interval=10,
+        wait_retry_interval=2,
     )
 
 

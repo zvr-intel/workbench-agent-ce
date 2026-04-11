@@ -9,6 +9,7 @@ WorkbenchClient API architecture.
 import logging
 
 from .blind_scan import handle_blind_scan
+from .delete_scan import handle_delete_scan
 from .download_reports import handle_download_reports
 from .evaluate_gates import handle_evaluate_gates
 from .import_da import handle_import_da
@@ -25,6 +26,7 @@ __all__ = [
     "handle_scan",
     "handle_scan_git",
     "handle_blind_scan",
+    "handle_delete_scan",
     "handle_import_da",
     "handle_import_sbom",
     "handle_show_results",

@@ -287,6 +287,7 @@ class TestHandlerReturnValues:
             ("scan-git", "handle_scan_git"),
             ("import-da", "handle_import_da"),
             ("show-results", "handle_show_results"),
+            ("delete-scan", "handle_delete_scan"),
             ("download-reports", "handle_download_reports"),
         ],
     )
@@ -356,6 +357,7 @@ class TestMainIntegration:
             ("scan-git", "handle_scan_git"),
             ("import-da", "handle_import_da"),
             ("show-results", "handle_show_results"),
+            ("delete-scan", "handle_delete_scan"),
             ("download-reports", "handle_download_reports"),
             ("evaluate-gates", "handle_evaluate_gates"),
         ],

@@ -19,11 +19,13 @@ from workbench_agent.exceptions import (
     ConfigurationError,
     FileSystemError,
     ValidationError,
+    WorkbenchAgentError,
 )
 
 # Import handlers from handlers package (new architecture)
 from workbench_agent.handlers import (
     handle_blind_scan,
+    handle_delete_scan,
     handle_download_reports,
     handle_evaluate_gates,
     handle_import_da,
@@ -160,6 +162,7 @@ def main() -> int:
             "scan": handle_scan,
             "blind-scan": handle_blind_scan,
             "scan-git": handle_scan_git,
+            "delete-scan": handle_delete_scan,
             "show-results": handle_show_results,
             "import-da": handle_import_da,
             "evaluate-gates": handle_evaluate_gates,
@@ -253,6 +256,18 @@ def main() -> int:
             format_and_print_error(e, context, args)
         except NameError:
             # args doesn't exist (shouldn't happen)
+            print(f"Error: {getattr(e, 'message', str(e))}")
+        return 1
+
+    except WorkbenchAgentError as e:
+        try:
+            logger.error(f"Workbench Agent error: {e}")
+        except NameError:
+            pass
+        try:
+            context = getattr(args, "command", "unknown")
+            format_and_print_error(e, context, args)
+        except NameError:
             print(f"Error: {getattr(e, 'message', str(e))}")
         return 1
 
