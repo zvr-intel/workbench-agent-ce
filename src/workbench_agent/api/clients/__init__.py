@@ -10,6 +10,7 @@ from .projects_api import ProjectsClient
 from .quickscan_api import QuickScanClient
 from .scans_api import ScansClient
 from .upload_api import UploadsClient
+from .users_api import UsersClient
 from .vulnerabilities_api import VulnerabilitiesClient
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "QuickScanClient",
     "ScansClient",
     "UploadsClient",
+    "UsersClient",
     "VulnerabilitiesClient",
 ]

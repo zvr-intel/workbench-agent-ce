@@ -151,6 +151,42 @@ def test_create_scan_exists(mock_send, scans_client):
         scans_client.create(data)
 
 
+@patch.object(BaseAPI, "_send_request")
+def test_delete_scan_success(mock_send, scans_client):
+    body = {
+        "status": "1",
+        "data": {"process_id": 42},
+        "operation": "scans_delete",
+    }
+    mock_send.return_value = body
+    assert scans_client.delete("my_scan") == body
+    payload = mock_send.call_args[0][0]
+    assert payload["action"] == "delete"
+    assert payload["data"]["scan_code"] == "my_scan"
+    assert payload["data"]["delete_identifications"] == "1"
+
+
+@patch.object(BaseAPI, "_send_request")
+def test_delete_scan_api_error_propagates(mock_send, scans_client):
+    """Thin client does not interpret API errors."""
+    mock_send.side_effect = ApiError(
+        "API Error: Classes.TableRepository.row_not_found",
+        details={
+            "operation": "scans_delete",
+            "status": "0",
+            "data": [],
+            "error": "Classes.TableRepository.row_not_found",
+            "message": "Row scan_code in table scans not found",
+            "message_parameters": {
+                "rowidentifier": "scan_code",
+                "table": "scans",
+            },
+        },
+    )
+    with pytest.raises(ApiError, match="API Error"):
+        scans_client.delete("bad_code")
+
+
 # --- Tests for Git operations ---
 @patch.object(BaseAPI, "_send_request")
 def test_download_content_from_git_success(mock_send, scans_client):

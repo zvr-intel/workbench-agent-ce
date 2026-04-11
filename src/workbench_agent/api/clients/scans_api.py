@@ -27,7 +27,7 @@ class ScansClient:
     Example:
         >>> scans = ScansClient(base_api)
         >>> scan_list = scans.list_scans()
-        >>> scans.run(scan_code, limit=10, sensitivity=6)
+        >>> scans.run({"scan_code": "MY_SCAN", "limit": 10, "sensitivity": 6})
     """
 
     def __init__(self, base_api):
@@ -638,6 +638,44 @@ class ScansClient:
                 )
             raise
 
+    def delete(
+        self,
+        scan_code: str,
+        delete_identifications: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Raw ``scans`` / ``delete`` API call.
+
+        Returns the parsed JSON body on success. On API error (including
+        invalid ``scan_code``), :meth:`~workbench_agent.api.helpers.base_api.BaseAPI._send_request`
+        raises :class:`~workbench_agent.api.exceptions.ApiError`.
+
+        For orchestration (not-found handling, polling until deleted), use
+        :class:`~workbench_agent.api.services.scan_deletion.ScanDeletionService`.
+
+        Args:
+            scan_code: Code of the scan to delete
+            delete_identifications: API ``delete_identifications`` ``"1"`` / ``"0"``
+
+        Returns:
+            Full successful API response dict (typically includes ``data.process_id``)
+
+        Raises:
+            ApiError: If the API returns an error response
+            NetworkError: If there are network issues
+        """
+        logger.debug(f"scans/delete request for scan '{scan_code}'")
+        payload_data = {
+            "scan_code": scan_code,
+            "delete_identifications": "1" if delete_identifications else "0",
+        }
+        payload = {
+            "group": "scans",
+            "action": "delete",
+            "data": payload_data,
+        }
+        return self._api._send_request(payload)
+
     # ===== GIT OPERATIONS =====
 
     def download_content_from_git(self, scan_code: str) -> bool:
@@ -1007,8 +1045,8 @@ class ScansClient:
         Args:
             scan_code: Code of the scan to check
             process_type: Type of process (SCAN, DEPENDENCY_ANALYSIS,
-                EXTRACT_ARCHIVES, REPORT_IMPORT, etc.)
-            process_id: Optional process ID (for report operations)
+                EXTRACT_ARCHIVES, REPORT_IMPORT, DELETE_SCAN, etc.)
+            process_id: Optional process ID (e.g. async report or delete scan)
 
         Returns:
             dict: Operation status data, always in dict format

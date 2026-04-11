@@ -224,7 +224,7 @@ def test_check_delete_scan_status(status_check_service, mock_scans_client):
     assert result.status == "FINISHED"
     assert result.is_finished is True
     mock_scans_client.check_status.assert_called_once_with(
-        "scan123", "DELETE_SCAN", process_id="789"
+        "scan123", "DELETE_SCAN", process_id=789
     )
 
 
