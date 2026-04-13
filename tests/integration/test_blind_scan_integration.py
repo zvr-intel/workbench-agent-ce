@@ -1,5 +1,6 @@
 # tests/integration/test_blind_scan_integration.py
 
+import os
 import shutil
 import sys
 from unittest.mock import MagicMock, mock_open, patch
@@ -7,6 +8,10 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
 from workbench_agent.main import main
+
+FIXTURES_DIR = os.path.join(
+    os.path.dirname(__file__), os.pardir, "fixtures"
+)
 
 
 # --- Helper Function to Create Dummy Directories ---
@@ -256,13 +261,13 @@ class TestBlindScanIntegration:
             combined_output = captured.out + captured.err
             assert "does not exist" in combined_output
 
-    def test_blind_scan_file_instead_of_directory(
+    def test_blind_scan_non_fossid_file_rejected(
         self, mock_workbench_api, tmp_path, capsys
     ):
         """
-        Test blind-scan command with a file path instead of directory.
+        Test blind-scan rejects non-.fossid files (only directories
+        and .fossid files are accepted).
         """
-        # Create a file instead of directory
         dummy_file = tmp_path / "test_file.py"
         dummy_file.write_text("print('test')")
 
@@ -298,6 +303,130 @@ class TestBlindScanIntegration:
             captured = capsys.readouterr()
             combined_output = captured.out + captured.err
             assert "must be a directory" in combined_output
+
+    def test_blind_scan_with_pregenerated_fossid_file(
+        self, mock_workbench_api, tmp_path, capsys
+    ):
+        """
+        Test blind-scan accepts a .fossid file,
+        skips Toolbox hashing, and uploads it directly.
+        """
+        fossid_file = os.path.join(FIXTURES_DIR, "signatures.fossid")
+
+        mock_toolbox_cls = MagicMock()
+
+        with (
+            patch(
+                "workbench_agent.handlers.blind_scan.ToolboxWrapper",
+                mock_toolbox_cls,
+            ),
+            patch("os.path.exists", return_value=True),
+        ):
+            args = [
+                "workbench-agent",
+                "blind-scan",
+                "--api-url",
+                "http://dummy.com",
+                "--api-user",
+                "test",
+                "--api-token",
+                "token",
+                "--project-name",
+                "TestProject",
+                "--scan-name",
+                "TestBlindScanFossidFile",
+                "--path",
+                fossid_file,
+            ]
+
+            with patch.object(sys, "argv", args):
+                return_code = main()
+                assert (
+                    return_code == 0
+                ), "Command should exit with success code"
+
+            # Toolbox should never be instantiated
+            mock_toolbox_cls.assert_not_called()
+
+            captured = capsys.readouterr()
+            combined_output = captured.out + captured.err
+            assert "Validating pre-generated .fossid file" in combined_output
+            assert "Skipping hash generation" in combined_output
+            assert "Validating FossID Toolbox" not in combined_output
+
+    def test_blind_scan_with_invalid_fossid_file(
+        self, mock_workbench_api, tmp_path, capsys
+    ):
+        """
+        Test blind-scan rejects a .fossid file with invalid schema.
+        """
+        bad_fossid = tmp_path / "bad.fossid"
+        bad_fossid.write_text("this is not valid json\n")
+
+        with patch("os.path.exists", return_value=True):
+            args = [
+                "workbench-agent",
+                "blind-scan",
+                "--api-url",
+                "http://dummy.com",
+                "--api-user",
+                "test",
+                "--api-token",
+                "token",
+                "--project-name",
+                "TestProject",
+                "--scan-name",
+                "TestBlindScanBadFossid",
+                "--path",
+                str(bad_fossid),
+            ]
+
+            with patch.object(sys, "argv", args):
+                return_code = main()
+                assert (
+                    return_code != 0
+                ), "Command should exit with error code"
+
+            captured = capsys.readouterr()
+            combined_output = captured.out + captured.err
+            assert "Invalid JSON" in combined_output
+
+    def test_blind_scan_with_empty_fossid_file(
+        self, mock_workbench_api, tmp_path, capsys
+    ):
+        """
+        Test blind-scan rejects an empty .fossid file.
+        """
+        empty_fossid = tmp_path / "empty.fossid"
+        empty_fossid.write_text("")
+
+        with patch("os.path.exists", return_value=True):
+            args = [
+                "workbench-agent",
+                "blind-scan",
+                "--api-url",
+                "http://dummy.com",
+                "--api-user",
+                "test",
+                "--api-token",
+                "token",
+                "--project-name",
+                "TestProject",
+                "--scan-name",
+                "TestBlindScanEmptyFossid",
+                "--path",
+                str(empty_fossid),
+            ]
+
+            with patch.object(sys, "argv", args):
+                return_code = main()
+                assert (
+                    return_code != 0
+                ), "Command should exit with error code"
+
+            captured = capsys.readouterr()
+            combined_output = captured.out + captured.err
+            assert "empty" in combined_output.lower()
 
     def test_blind_scan_cli_version_warning(
         self, mock_workbench_api, tmp_path, capsys

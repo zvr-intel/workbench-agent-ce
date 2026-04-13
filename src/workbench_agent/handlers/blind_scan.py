@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 import time
@@ -53,6 +54,85 @@ def cleanup_temp_file(file_path: str) -> bool:
         return False
 
 
+def validate_fossid_file(file_path: str) -> None:
+    """
+    Validate the schema of a pre-generated .fossid file.
+
+    Each line must be a JSON object containing at minimum:
+    - path (str): Relative file path
+    - size (int): File size in bytes
+    - hashes_ffm (list): Hash objects, each with format (int) and data (str)
+
+    Args:
+        file_path: Path to the .fossid file to validate
+
+    Raises:
+        ValidationError: If the file is empty or has invalid schema
+    """
+    try:
+        with open(file_path, "r") as f:
+            lines = f.readlines()
+    except Exception as e:
+        raise ValidationError(
+            f"Failed to read .fossid file '{file_path}': {e}"
+        ) from e
+
+    if not lines or all(line.strip() == "" for line in lines):
+        raise ValidationError(
+            f"The .fossid file '{file_path}' is empty."
+        )
+
+    required_fields = {"path": str, "size": int, "hashes_ffm": list}
+
+    for line_num, line in enumerate(lines, start=1):
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise ValidationError(
+                f"Invalid JSON on line {line_num} of "
+                f"'{file_path}': {e}"
+            ) from e
+
+        if not isinstance(entry, dict):
+            raise ValidationError(
+                f"Line {line_num} of '{file_path}' is not a JSON object."
+            )
+
+        for field, expected_type in required_fields.items():
+            if field not in entry:
+                raise ValidationError(
+                    f"Line {line_num} of '{file_path}' is missing "
+                    f"required field '{field}'."
+                )
+            if not isinstance(entry[field], expected_type):
+                raise ValidationError(
+                    f"Line {line_num} of '{file_path}': '{field}' must "
+                    f"be {expected_type.__name__}."
+                )
+
+        for i, hash_entry in enumerate(entry["hashes_ffm"]):
+            if not isinstance(hash_entry, dict):
+                raise ValidationError(
+                    f"Line {line_num} of '{file_path}': "
+                    f"'hashes_ffm[{i}]' must be an object."
+                )
+            if "format" not in hash_entry or "data" not in hash_entry:
+                raise ValidationError(
+                    f"Line {line_num} of '{file_path}': "
+                    f"'hashes_ffm[{i}]' must have 'format' and "
+                    f"'data' fields."
+                )
+
+    non_empty = sum(1 for l in lines if l.strip())
+    logger.info(
+        f"Validated .fossid file '{file_path}': {non_empty} entries."
+    )
+
+
 @handler_error_wrapper
 def handle_blind_scan(
     client: "WorkbenchClient", params: argparse.Namespace
@@ -64,15 +144,18 @@ def handle_blind_scan(
     and then follows the same pattern as regular scan. This allows
     scanning without uploading source code to Workbench.
 
+    Alternatively, accepts a pre-generated .fossid file directly,
+    skipping the Toolbox hashing step entirely.
+
     Workflow:
-    1. Validates parameters
-    2. Validates FossID Toolbox availability
-    3. Generates file hashes using FossID Toolbox
+    1. Validates parameters and detects input type
+    2a. If .fossid file: validates file schema
+    2b. If directory: validates Toolbox and generates hashes
     4. Resolves/creates project and scan in Workbench
     5. Uploads hash file to Workbench
     6. Runs requested scans
     7. Displays requested results
-    8. Cleans up temporary hash file
+    8. Cleans up temporary hash file (only if generated)
 
     This order ensures local prerequisites (toolbox, hash generation) are
     validated before any API calls to Workbench, avoiding creation of
@@ -81,7 +164,7 @@ def handle_blind_scan(
     Args:
         client: The Workbench API client instance
         params: Command line parameters including:
-            - path: Directory to scan (files not supported)
+            - path: Directory to hash, or pre-generated .fossid file
             - Various scan configuration options
 
     Returns:
@@ -103,52 +186,65 @@ def handle_blind_scan(
 
     # ===== STEP 1: Validate scan parameters =====
     # Note: Path existence is validated at CLI layer (cli/validators.py)
-
-    # Business logic validation: blind-scan specifically requires directories
-    if not os.path.isdir(params.path):
-        raise ValidationError(
-            f"The provided path must be a directory for blind-scan "
-            f"operations. Files are not supported. Provided: {params.path}"
-        )
-
-    # ===== STEP 2: Validate FossID Toolbox availability =====
-    print("\nValidating FossID Toolbox...")
-    toolbox_wrapper = ToolboxWrapper(
-        toolbox_path=getattr(
-            params, "fossid_toolbox_path", "/usr/bin/fossid-toolbox"
-        ),
+    is_pregenerated = (
+        os.path.isfile(params.path)
+        and params.path.endswith(".fossid")
     )
 
-    try:
-        version = toolbox_wrapper.get_version()
-        print(f"Using {version}")
-    except Exception as e:
-        # Fail fast - if toolbox is not available, stop here
-        logger.error(f"FossID Toolbox validation failed: {e}")
+    if not is_pregenerated and not os.path.isdir(params.path):
         raise ValidationError(
-            f"FossID Toolbox is not available or cannot be executed. "
-            f"Please ensure it is installed and accessible at the "
-            f"specified path. Error: {e}"
-        ) from e
+            f"The provided path must be a directory to hash, or a "
+            f"pre-generated .fossid file. Provided: {params.path}"
+        )
 
     hash_file_path = None
+    should_cleanup = False
 
     try:
-        # ===== STEP 3: Generate file hashes =====
-        print("\nGenerating file hashes using FossID Toolbox...")
-        hash_start_time = time.time()
-        hash_file_path = toolbox_wrapper.generate_hashes(
-            path=params.path,
-            run_dependency_analysis=getattr(
-                params, "run_dependency_analysis", False
-            ),
-        )
-        hash_duration = time.time() - hash_start_time
-        durations["hash_generation"] = hash_duration
-        print(
-            f"Hash generation completed in "
-            f"{format_duration(hash_duration)}."
-        )
+        if is_pregenerated:
+            print("\nValidating pre-generated .fossid file...")
+            validate_fossid_file(params.path)
+            hash_file_path = params.path
+            print("Validation successful. Skipping hash generation.")
+        else:
+            # ===== STEP 2: Validate FossID Toolbox availability =====
+            print("\nValidating FossID Toolbox...")
+            toolbox_wrapper = ToolboxWrapper(
+                toolbox_path=getattr(
+                    params, "fossid_toolbox_path",
+                    "/usr/bin/fossid-toolbox"
+                ),
+            )
+
+            try:
+                version = toolbox_wrapper.get_version()
+                print(f"Using {version}")
+            except Exception as e:
+                logger.error(
+                    f"FossID Toolbox validation failed: {e}"
+                )
+                raise ValidationError(
+                    f"FossID Toolbox is not available or cannot be "
+                    f"executed. Please ensure it is installed and "
+                    f"accessible at the specified path. Error: {e}"
+                ) from e
+
+            # ===== STEP 3: Generate file hashes =====
+            print("\nGenerating file hashes using FossID Toolbox...")
+            hash_start_time = time.time()
+            hash_file_path = toolbox_wrapper.generate_hashes(
+                path=params.path,
+                run_dependency_analysis=getattr(
+                    params, "run_dependency_analysis", False
+                ),
+            )
+            hash_duration = time.time() - hash_start_time
+            durations["hash_generation"] = hash_duration
+            print(
+                f"Hash generation completed in "
+                f"{format_duration(hash_duration)}."
+            )
+            should_cleanup = True
 
         # ===== STEP 4: Resolve/create project and scan in Workbench =====
         print("\n--- Project and Scan Checks ---")
@@ -382,7 +478,7 @@ def handle_blind_scan(
 
     finally:
         # ===== STEP 8: Clean up temporary hash file =====
-        if hash_file_path:
+        if should_cleanup and hash_file_path:
             cleanup_success = cleanup_temp_file(hash_file_path)
             if cleanup_success:
                 logger.debug(

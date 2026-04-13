@@ -103,8 +103,8 @@ Examples:
     # --- 'blind-scan' Subcommand ---
     blind_scan_parser = subparsers.add_parser(
         "blind-scan",
-        help="Run a blind scan using fossid-toolbox to generate hashes",
-        description="Generate hashes and upload to Workbench for scanning.",
+        help="Run a blind scan using fossid-toolbox or a pre-generated .fossid file",
+        description="Generate hashes (or use a pre-generated .fossid file) and upload to Workbench for scanning.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -129,11 +129,15 @@ Examples:
   # Blind scan with custom fossid-toolbox path
   workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0-blind" \\
       --path ./src --fossid-toolbox-path /usr/local/bin/fossid-toolbox
+
+  # Blind scan with a pre-generated .fossid file (skips hashing)
+  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0-blind" \\
+      --path ./signatures.fossid
 """,
     )
     blind_scan_parser.add_argument(
         "--path",
-        help="Local directory to hash for scanning",
+        help="Local directory to hash, or a pre-generated .fossid file",
         required=True,
         metavar="PATH",
     )
