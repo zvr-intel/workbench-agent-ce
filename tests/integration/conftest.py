@@ -475,6 +475,20 @@ def mock_workbench_api(mocker):
     mock_client.scan_operations.run_scan = MagicMock()
     mock_client.scan_operations.run_da_only = MagicMock()
 
+    # --- Mock Scan Deletion Service ---
+    mock_client.scan_deletion = MagicMock()
+    mock_client.scan_deletion.delete_scan = MagicMock(
+        return_value=StatusResult(
+            status="FINISHED",
+            raw_data={"status": "FINISHED"},
+            success=True,
+        )
+    )
+
+    # --- Mock User Permissions Service ---
+    mock_client.user_permissions = MagicMock()
+    mock_client.user_permissions.can_delete_scan.return_value = True
+
     # --- Mock Results Service ---
     mock_client.results = MagicMock()
     mock_client.results.fetch_results.return_value = {

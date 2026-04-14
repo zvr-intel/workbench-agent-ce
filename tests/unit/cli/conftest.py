@@ -118,6 +118,9 @@ def mock_main_dependencies():
             ) as mock_import_sbom,
             patch("workbench_agent.main.handle_show_results") as mock_show,
             patch(
+                "workbench_agent.main.handle_delete_scan"
+            ) as mock_delete_scan,
+            patch(
                 "workbench_agent.main.handle_download_reports"
             ) as mock_download,
             patch(
@@ -134,6 +137,7 @@ def mock_main_dependencies():
             mocks["handle_import_da"] = mock_import
             mocks["handle_import_sbom"] = mock_import_sbom
             mocks["handle_show_results"] = mock_show
+            mocks["handle_delete_scan"] = mock_delete_scan
             mocks["handle_download_reports"] = mock_download
             mocks["handle_evaluate_gates"] = mock_gates
             mocks["handle_quick_scan"] = mock_quick_scan

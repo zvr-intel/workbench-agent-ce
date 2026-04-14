@@ -359,9 +359,14 @@ class StatusCheckService:
     def _get_delete_scan_status(
         self, scan_code: str, process_id: int
     ) -> StatusResult:
-        """Collect scan deletion status without waiting."""
+        """Collect scan deletion status without waiting.
+
+        Omits ``scan_code`` in the API payload: once deletion finishes the scan
+        row no longer exists and including ``scan_code`` can cause
+        ``row_not_found`` on ``check_status``. The job is keyed by ``process_id``.
+        """
         status_data = self._scans.check_status(
-            scan_code, "DELETE_SCAN", process_id=str(process_id)
+            None, "DELETE_SCAN", process_id=process_id
         )
         normalized_status = self._standard_scan_status_accessor(status_data)
         return StatusResult(
@@ -725,7 +730,7 @@ class StatusCheckService:
         process_id: int,
         wait: bool = False,
         wait_retry_count: int = 360,
-        wait_retry_interval: int = 10,
+        wait_retry_interval: int = 2,
     ) -> StatusResult:
         """
         Check the status of a scan deletion operation.
@@ -737,7 +742,7 @@ class StatusCheckService:
             wait_retry_count: Maximum attempts when waiting (default: 360,
                 only used if wait=True)
             wait_retry_interval: Seconds between attempts when waiting
-                (default: 10, only used if wait=True)
+                (default: 2, only used if wait=True)
 
         Returns:
             StatusResult. When wait=True, duration will be populated.

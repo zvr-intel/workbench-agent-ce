@@ -27,7 +27,7 @@ class ScansClient:
     Example:
         >>> scans = ScansClient(base_api)
         >>> scan_list = scans.list_scans()
-        >>> scans.run(scan_code, limit=10, sensitivity=6)
+        >>> scans.run({"scan_code": "MY_SCAN", "limit": 10, "sensitivity": 6})
     """
 
     def __init__(self, base_api):
@@ -638,6 +638,44 @@ class ScansClient:
                 )
             raise
 
+    def delete(
+        self,
+        scan_code: str,
+        delete_identifications: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Raw ``scans`` / ``delete`` API call.
+
+        Returns the parsed JSON body on success. On API error (including
+        invalid ``scan_code``), :meth:`~workbench_agent.api.helpers.base_api.BaseAPI._send_request`
+        raises :class:`~workbench_agent.api.exceptions.ApiError`.
+
+        For orchestration (not-found handling, polling until deleted), use
+        :class:`~workbench_agent.api.services.scan_deletion.ScanDeletionService`.
+
+        Args:
+            scan_code: Code of the scan to delete
+            delete_identifications: API ``delete_identifications`` ``"1"`` / ``"0"``
+
+        Returns:
+            Full successful API response dict (typically includes ``data.process_id``)
+
+        Raises:
+            ApiError: If the API returns an error response
+            NetworkError: If there are network issues
+        """
+        logger.debug(f"scans/delete request for scan '{scan_code}'")
+        payload_data = {
+            "scan_code": scan_code,
+            "delete_identifications": "1" if delete_identifications else "0",
+        }
+        payload = {
+            "group": "scans",
+            "action": "delete",
+            "data": payload_data,
+        }
+        return self._api._send_request(payload)
+
     # ===== GIT OPERATIONS =====
 
     def download_content_from_git(self, scan_code: str) -> bool:
@@ -994,7 +1032,7 @@ class ScansClient:
 
     def check_status(
         self,
-        scan_code: str,
+        scan_code: Optional[str],
         process_type: str,
         process_id: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -1005,10 +1043,12 @@ class ScansClient:
         Always returns a dict, normalizing any non-dict responses from the API.
 
         Args:
-            scan_code: Code of the scan to check
+            scan_code: Code of the scan to check. Use ``None`` to omit (only
+                for operations identified by ``process_id``, e.g. ``DELETE_SCAN``
+                after the scan row may no longer exist).
             process_type: Type of process (SCAN, DEPENDENCY_ANALYSIS,
-                EXTRACT_ARCHIVES, REPORT_IMPORT, etc.)
-            process_id: Optional process ID (for report operations)
+                EXTRACT_ARCHIVES, REPORT_IMPORT, DELETE_SCAN, etc.)
+            process_id: Optional process ID (e.g. async report or delete scan)
 
         Returns:
             dict: Operation status data, always in dict format
@@ -1016,20 +1056,29 @@ class ScansClient:
         Raises:
             ScanNotFoundError: If scan doesn't exist
             ApiError: If status check fails
+            ValueError: If ``scan_code`` is omitted but ``process_id`` is missing
 
         Example:
             >>> status = scans.check_status("scan_123", "SCAN")
             >>> status = scans.check_status("scan_123", "DEPENDENCY_ANALYSIS")
+            >>> status = scans.check_status(None, "DELETE_SCAN", process_id=42)
         """
+        if scan_code is None and process_id is None:
+            raise ValueError(
+                "check_status requires scan_code or process_id"
+            )
+
+        log_target = scan_code if scan_code is not None else f"process_id={process_id}"
         logger.debug(
-            f"Checking {process_type} status for scan '{scan_code}'..."
+            f"Checking {process_type} status for {log_target!r}..."
         )
 
         # Build payload
-        payload_data = {
-            "scan_code": scan_code,
+        payload_data: Dict[str, Any] = {
             "type": process_type,
         }
+        if scan_code is not None:
+            payload_data["scan_code"] = scan_code
         if process_id is not None:
             payload_data["process_id"] = str(process_id)
 
@@ -1047,11 +1096,34 @@ class ScansClient:
             # Normalize: always return a dict
             if isinstance(data, dict):
                 return data
+            elif isinstance(data, bool):
+                # Workbench returns data=true when DELETE_SCAN has finished
+                # (scan row is gone; no object payload). Map to progress_state
+                # so _standard_scan_status_accessor yields FINISHED.
+                if process_type == "DELETE_SCAN":
+                    if data is True:
+                        out: Dict[str, Any] = {
+                            "progress_state": "FINISHED",
+                            "is_finished": True,
+                        }
+                        msg = response.get("message")
+                        if isinstance(msg, str) and msg:
+                            out["message"] = msg
+                        return out
+                    return {
+                        "progress_state": "FAILED",
+                        "is_finished": True,
+                    }
+                logger.warning(
+                    f"Unexpected bool data from {process_type} status API "
+                    f"({log_target!r})"
+                )
+                return {"status": str(data)}
             elif isinstance(data, str):
                 # Wrap string responses in dict for consistency
                 logger.warning(
                     f"API returned string instead of dict for {process_type} "
-                    f"status (scan '{scan_code}')"
+                    f"status ({log_target!r})"
                 )
                 return {"status": data}
             else:
@@ -1068,10 +1140,15 @@ class ScansClient:
                 "Scan not found" in error_msg
                 or "row_not_found" in error_msg
             ):
-                raise ScanNotFoundError(f"Scan '{scan_code}' not found")
+                if scan_code is not None:
+                    raise ScanNotFoundError(f"Scan '{scan_code}' not found")
+                raise ScanNotFoundError(
+                    f"Status check failed ({process_type}, "
+                    f"process_id={process_id}): {error_msg}"
+                )
             raise ApiError(
                 f"Failed to retrieve {process_type} status for "
-                f"scan '{scan_code}': {error_msg}",
+                f"{log_target!r}: {error_msg}",
                 details=response,
             )
 

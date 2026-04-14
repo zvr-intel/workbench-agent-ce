@@ -316,6 +316,7 @@ def handler_error_wrapper(handler_func: Callable) -> Callable:
             ApiError,
             NetworkError,
             ProcessError,
+            WorkbenchAgentError,
         ) as e:
             # Expected exceptions - log and re-raise for main.py to format
             logger.debug(

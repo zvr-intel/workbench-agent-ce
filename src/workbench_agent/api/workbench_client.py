@@ -49,6 +49,7 @@ from workbench_agent.api.clients import (
     QuickScanClient,
     ScansClient,
     UploadsClient,
+    UsersClient,
     VulnerabilitiesClient,
 )
 from workbench_agent.api.exceptions import CompatibilityError
@@ -57,9 +58,11 @@ from workbench_agent.api.services import (
     ReportService,
     ResolverService,
     ResultsService,
+    ScanDeletionService,
     ScanOperationsService,
     StatusCheckService,
     UploadService,
+    UserPermissionsService,
     WaitingService,
 )
 
@@ -78,6 +81,7 @@ class WorkbenchClient:
     - `downloads`: File downloads (reports, etc.)
     - `vulnerabilities`: Vulnerability queries
     - `quick_scan`: Quick file scanning
+    - `users`: User lookup and listing permissions for a user
     - `internal`: Internal/config operations
 
     **Services (High-level orchestration):**
@@ -86,6 +90,8 @@ class WorkbenchClient:
     - `reports`: Report generation with validation and waiting
     - `results`: Fetch and aggregate scan results
     - `scan_operations`: Scan execution with standardized behavior
+    - `scan_deletion`: Queue scan delete and wait until complete
+    - `user_permissions`: Check API user Workbench permissions (e.g. delete scan)
     - `upload_service`: File upload operations with business logic
     - `waiting`: Convenient waiting methods for async operations
 
@@ -173,6 +179,7 @@ class WorkbenchClient:
         self.downloads = DownloadClient(self._base_api)
         self.vulnerabilities = VulnerabilitiesClient(self._base_api)
         self.quick_scan = QuickScanClient(self._base_api)
+        self.users = UsersClient(self._base_api)
 
         logger.debug("API clients initialized successfully")
 
@@ -203,11 +210,22 @@ class WorkbenchClient:
             scans_client=self.scans, resolver_service=self.resolver
         )
 
+        self.scan_deletion = ScanDeletionService(
+            scans_client=self.scans,
+            status_check_service=self.status_check,
+        )
+
         self.waiting = WaitingService(
             status_check_service=self.status_check
         )
 
         self.upload_service = UploadService(uploads_client=self.uploads)
+
+        self.user_permissions = UserPermissionsService(
+            users_client=self.users,
+            scans_client=self.scans,
+            api_user=self._base_api.api_user,
+        )
 
         logger.debug("Orchestration services initialized successfully")
         logger.info("WorkbenchClient initialization complete")

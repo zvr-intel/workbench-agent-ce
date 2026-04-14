@@ -244,6 +244,43 @@ Examples:
 """,
     )
 
+    # --- 'delete-scan' Subcommand ---
+    delete_scan_parser = subparsers.add_parser(
+        "delete-scan",
+        help="Permanently delete a scan from Workbench",
+        description=(
+            "Queue deletion of an existing scan (async background job) and wait "
+            "until it finishes. Requires permission to delete the scan (global "
+            "delete permission or scan owner). This cannot be undone. "
+            "Status polling uses a fixed 2 second interval; "
+            "--scan-wait-time does not apply to this command."
+        ),
+        formatter_class=RawTextHelpFormatter,
+        parents=[
+            parent_parsers["cli_behaviors"],
+            parent_parsers["workbench_connection"],
+            parent_parsers["project_scan_target"],
+            parent_parsers["monitoring"],
+        ],
+        epilog="""
+Examples:
+  # Delete a scan (default: keep identifications metadata behavior per API)
+  workbench-agent delete-scan --project-name "MyProject" --scan-name "v1.0.0"
+
+  # Delete scan and request identifications removal per API
+  workbench-agent delete-scan --project-name "MyProject" --scan-name "v1.0.0" \\
+      --delete-identifications
+""",
+    )
+    delete_scan_parser.add_argument(
+        "--delete-identifications",
+        help=(
+            "When set, pass delete_identifications=1 to the API (default: off)."
+        ),
+        action="store_true",
+        default=False,
+    )
+
     # --- 'evaluate-gates' Subcommand ---
     evaluate_gates_parser = subparsers.add_parser(
         "evaluate-gates",
