@@ -263,6 +263,7 @@ def main() -> int:
         try:
             logger.error(f"Workbench Agent error: {e}")
         except NameError:
+            # logger not yet initialized
             pass
         try:
             context = getattr(args, "command", "unknown")
