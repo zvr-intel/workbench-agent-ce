@@ -614,11 +614,13 @@ def execute_scan_workflow(
                     "to complete..."
                 )
                 try:
-                    da_result = client.status_check.check_dependency_analysis_status(
-                        scan_code,
-                        wait=True,
-                        wait_retry_count=params.scan_number_of_tries,
-                        wait_retry_interval=params.scan_wait_time,
+                    da_result = (
+                        client.status_check.check_dependency_analysis_status(
+                            scan_code,
+                            wait=True,
+                            wait_retry_count=params.scan_number_of_tries,
+                            wait_retry_interval=params.scan_wait_time,
+                        )
                     )
                     durations["dependency_analysis"] = (
                         da_result.duration or 0.0

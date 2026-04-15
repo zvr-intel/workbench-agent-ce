@@ -1,7 +1,7 @@
 """
 Pre-flight check utilities for ensuring scans are idle before operations.
 
-These functions are performed early by handlers to ensure they aren't impacted by running operations.
+These functions help handlers avoid impacting running operations.
 """
 
 import argparse

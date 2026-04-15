@@ -72,11 +72,11 @@ def handle_scan(
         params=params,
     )
 
-    # ===== STEP 2: Pre-flight checks =====
+    # ===== STEP 2: Pre-Flight Checks =====
     print("\n--- Pre-Flight Checks ---")
     scan_pre_flight_check(client, scan_code, scan_is_new, params)
 
-    # ===== STEP 3: Clear existing content =====
+    # ===== STEP 3: Clear Existing Content =====
     if not scan_is_new:
         print("\nClearing existing scan content...")
         try:
@@ -136,7 +136,7 @@ def handle_scan(
     else:
         print("No archives to extract. Continuing with scan...")
 
-    # ===== STEP 6: Run scans, wait, display results =====
+    # ===== STEP 6: Run Scans =====
     print("\n--- Running Scans ---")
     return execute_scan_workflow(
         client, params, scan_code, durations

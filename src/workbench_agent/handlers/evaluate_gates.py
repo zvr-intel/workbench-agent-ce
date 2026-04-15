@@ -365,7 +365,7 @@ def _print_next_steps(
     # Collect links for failed gates or actionable items
     next_steps = []
 
-    # Check pending files gate - show link if gate failed or if there are pending files
+    # Check pending files gate - show link if gate fails or files are pending
     if not results.pending_files.passed or results.pending_files.count > 0:
         next_steps.append(workbench_links.pending)
 
@@ -375,7 +375,7 @@ def _print_next_steps(
 
     # Check vulnerabilities gate - show link if gate failed
     if not results.vulnerabilities.passed:
-        # Use vulnerable link for vulnerabilities to direct users to Vulnerable Tab
+        # Use link for vulnerabilities to direct users to Vulnerable Tab
         next_steps.append(workbench_links.vulnerabilities)
 
     # Only show Next Steps if there are failed gates or actionable items

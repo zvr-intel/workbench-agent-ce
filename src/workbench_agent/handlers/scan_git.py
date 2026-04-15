@@ -31,7 +31,7 @@ def handle_scan_git(
     2. Ensures scan is idle
     3. Clones Git repository
     4. Removes .git directory
-    5. Runs scans, waits, and displays results
+    5. Runs scans, waiting if needed
 
     Args:
         client: The Workbench API client instance
@@ -67,14 +67,13 @@ def handle_scan_git(
         )
     )
 
-
-    # ===== STEP 2: Pre-flight checks =====
+    # ===== STEP 2: Pre-Flight Checks =====
     print("\n--- Pre-Flight Checks ---")
     scan_git_pre_flight_check(
         client, scan_code, scan_is_new, params
     )
 
-    # ===== STEP 3: Git clone =====
+    # ===== STEP 3: Git Clone =====
     print("\n--- Cloning the Target Repo ---")
     print("Starting Git Clone...")
 
@@ -101,7 +100,7 @@ def handle_scan_git(
             details={"error": str(e)},
         ) from e
 
-    # ===== STEP 4: Remove .git directory =====
+    # ===== STEP 4: Remove .git Directory =====
     print("\nRemoving .git directory to optimize scan...")
     try:
         if client.scans.remove_uploaded_content(
@@ -118,7 +117,7 @@ def handle_scan_git(
             f"Continuing with scan..."
         )
 
-    # ===== STEP 5: Run scans, wait, display results =====
+    # ===== STEP 5: Run Scans =====
     print("\n--- Scan Operations ---")
     return execute_scan_workflow(
         client, params, scan_code, durations
