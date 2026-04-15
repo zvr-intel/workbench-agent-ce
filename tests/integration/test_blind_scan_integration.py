@@ -100,8 +100,7 @@ class TestBlindScanIntegration:
             combined_output = captured.out + captured.err
             assert "BLIND-SCAN" in combined_output
             assert "Validating FossID Toolbox" in combined_output
-            assert "Generating file hashes" in combined_output
-            assert "Hash generation completed" in combined_output
+            assert "Hashing Target Path" in combined_output
 
     def test_blind_scan_with_dependency_analysis(
         self, mock_workbench_api, tmp_path, capsys
@@ -302,7 +301,10 @@ class TestBlindScanIntegration:
 
             captured = capsys.readouterr()
             combined_output = captured.out + captured.err
-            assert "must be a directory" in combined_output
+            assert (
+                "must be a directory or a .fossid file"
+                in combined_output
+            )
 
     def test_blind_scan_with_pregenerated_fossid_file(
         self, mock_workbench_api, tmp_path, capsys

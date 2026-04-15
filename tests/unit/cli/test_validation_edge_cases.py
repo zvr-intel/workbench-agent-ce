@@ -123,8 +123,11 @@ class TestValidationEdgeCases:
         # Should not raise an exception
         _validate_scan_commands(args)
 
+    @patch("os.path.isdir", return_value=True)
     @patch("os.path.exists", return_value=True)
-    def test_valid_blind_scan_command_passes(self, mock_exists):
+    def test_valid_blind_scan_command_passes(
+        self, mock_exists, mock_isdir
+    ):
         """Test that valid blind-scan command passes validation."""
         args = Namespace(command="blind-scan", path="/valid/path")
 

@@ -298,13 +298,13 @@ def wait_for_completion(
                         operation_name,
                         duration,
                     )
-                    print(
+                    logger.info(
                         f"\n{operation_name} completed successfully "
                         f"({duration:.1f}s)"
                     )
                 else:
                     logger.info("%s completed successfully", operation_name)
-                    print(f"\n{operation_name} completed successfully")
+                    logger.info(f"\n{operation_name} completed successfully")
 
                 return result
 

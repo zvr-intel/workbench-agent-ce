@@ -80,6 +80,14 @@ def _validate_scan_commands(args: Namespace) -> None:
             )
         if not os.path.exists(path):
             raise ValidationError(f"Path does not exist: {path}")
+        if command == "blind-scan":
+            if not os.path.isdir(path) and not path.endswith(
+                ".fossid"
+            ):
+                raise ValidationError(
+                    "blind-scan path must be a directory or a "
+                    ".fossid file."
+                )
 
     # Validate ID reuse parameters
     _validate_id_reuse_args(args)
