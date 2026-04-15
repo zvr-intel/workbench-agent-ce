@@ -2,8 +2,9 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from workbench_agent.exceptions import ValidationError
 from workbench_agent.utilities.error_handling import handler_error_wrapper
@@ -21,6 +22,24 @@ if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
 
 logger = logging.getLogger("workbench-agent")
+
+
+def resolve_fossid_toolbox_path(configured: Optional[str]) -> str:
+    """
+    Return the path to the fossid-toolbox executable.
+
+    If ``configured`` is set, it is used as-is. Otherwise ``fossid-toolbox``
+    is resolved via the process environment PATH (``shutil.which``).
+    """
+    if configured:
+        return configured
+    resolved = shutil.which("fossid-toolbox")
+    if not resolved:
+        raise ValidationError(
+            "fossid-toolbox not found in PATH. Install FossID Toolbox or "
+            "pass --fossid-toolbox-path with the full path to the executable."
+        )
+    return resolved
 
 
 def cleanup_temp_file(file_path: str) -> bool:
@@ -140,26 +159,27 @@ def handle_blind_scan(
     """
     Handler for the 'blind-scan' command.
 
-    Uses FossID Toolbox to generate file hashes, uploads the hash file,
-    and then follows the same pattern as regular scan. This allows
-    scanning without uploading source code to Workbench.
+    Allows scanning without uploading source code to Workbench.
 
-    Alternatively, accepts a pre-generated .fossid file directly,
-    skipping the Toolbox hashing step entirely.
+    For the provided path, uses Toolbox to generate hashes,
+    uploads the hash file, then runs the scan.
+
+    Alternatively, accepts a pre-generated .fossid file,
+    skipping the Toolbox hashing step.
 
     Workflow:
     1. Validates parameters and detects input type
     2a. If .fossid file: validates file schema
     2b. If directory: validates Toolbox and generates hashes
-    4. Resolves/creates project and scan in Workbench
-    5. Uploads hash file to Workbench
-    6. Runs requested scans
-    7. Displays requested results
-    8. Cleans up temporary hash file (only if generated)
+    3. Resolves/creates project and scan in Workbench
+    4. Uploads hash file to Workbench
+    5. Runs requested scans
+    6. Displays requested results
+    7. Cleans up temporary hash file (only if generated)
 
-    This order ensures local prerequisites (toolbox, hash generation) are
-    validated before any API calls to Workbench, avoiding creation of
-    resources if local validation fails.
+    This order ensures prerequisites are validated before
+    making API calls to Workbench, avoiding creation of
+    resources if validation fails.
 
     Args:
         client: The Workbench API client instance
@@ -173,7 +193,7 @@ def handle_blind_scan(
     Raises:
         ValidationError: If required parameters are invalid
         FileSystemError: If specified paths don't exist
-        ProcessError: If CLI execution fails
+        ProcessError: If Toolbox execution fails
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
 
@@ -184,7 +204,7 @@ def handle_blind_scan(
         "dependency_analysis": 0.0,
     }
 
-    # ===== STEP 1: Validate scan parameters =====
+    # ===== STEP 1: Validate Scan Parameters =====
     # Note: Path existence is validated at CLI layer (cli/validators.py)
     is_pregenerated = (
         os.path.isfile(params.path)
@@ -210,9 +230,8 @@ def handle_blind_scan(
             # ===== STEP 2: Validate FossID Toolbox availability =====
             print("\nValidating FossID Toolbox...")
             toolbox_wrapper = ToolboxWrapper(
-                toolbox_path=getattr(
-                    params, "fossid_toolbox_path",
-                    "/usr/bin/fossid-toolbox"
+                toolbox_path=resolve_fossid_toolbox_path(
+                    getattr(params, "fossid_toolbox_path", None)
                 ),
             )
 

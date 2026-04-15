@@ -149,11 +149,11 @@ Examples:
     cli_group.add_argument(
         "--fossid-toolbox-path",
         help=(
-            "Path to fossid-toolbox executable "
-            "(Default: /usr/bin/fossid-toolbox)"
+            "Path to fossid-toolbox executable. If omitted, "
+            "'fossid-toolbox' is resolved from the system PATH."
         ),
         type=str,
-        default="/usr/bin/fossid-toolbox",
+        default=None,
     )
 
     # --- 'import-da' Subcommand ---
