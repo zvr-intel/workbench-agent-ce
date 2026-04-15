@@ -237,7 +237,7 @@ def wait_for_completion(
 
     Raises:
         ProcessTimeoutError: If max_tries exceeded
-        ProcessError: If operation fails (status checking error, not operation failure)
+        ProcessError: If status check fails (not operation failure)
         UnsupportedStatusCheck: If status check not supported
 
     Note:

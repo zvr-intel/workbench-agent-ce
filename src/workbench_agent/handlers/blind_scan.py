@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import shutil
-import time
 from typing import TYPE_CHECKING, Optional
 
 from workbench_agent.exceptions import ValidationError
@@ -142,7 +141,7 @@ def validate_fossid_file(file_path: str) -> None:
                     f"'data' fields."
                 )
 
-    non_empty = sum(1 for l in lines if l.strip())
+    non_empty = sum(1 for line in lines if line.strip())
     logger.info(
         f"Validated .fossid file '{file_path}': {non_empty} entries."
     )

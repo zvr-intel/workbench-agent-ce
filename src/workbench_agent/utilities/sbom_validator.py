@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple
 
 from workbench_agent.exceptions import FileSystemError, ValidationError
 
@@ -14,7 +14,7 @@ logger = logging.getLogger("workbench-agent")
 
 class SBOMValidator:
     """
-    Utility class for validating SBOM files and converting them to Workbench-compatible formats.
+    Utility for validating and converting SBOMs to Workbench-compatible format.
     Supports CycloneDX JSON and SPDX in multiple formats (JSON, RDF, XML).
     """
 
@@ -25,7 +25,7 @@ class SBOMValidator:
         file_path: str,
     ) -> Tuple[str, str, Dict[str, Any], Any]:
         """
-        Validates an SBOM file and returns format information and parsed document.
+        Validates an SBOM, returns format information and parsed document.
 
         Args:
             file_path: Path to the SBOM file to validate
@@ -39,7 +39,7 @@ class SBOMValidator:
 
         Raises:
             FileSystemError: If the file doesn't exist or can't be read
-            ValidationError: If the file is not a valid SBOM or unsupported format/version
+            ValidationError: If SBOM is invalid or unsupported format/version
         """
         if not os.path.exists(file_path):
             raise FileSystemError(f"SBOM file does not exist: {file_path}")
@@ -74,11 +74,11 @@ class SBOMValidator:
         file_path: str, sbom_format: str, parsed_document: Any
     ) -> str:
         """
-        Prepares an SBOM file for upload to Workbench, converting format if needed.
+        Prepares an SBOM for upload to Workbench, converting format if needed.
 
         Args:
             file_path: Original file path
-            sbom_format: Format detected during validation ("cyclonedx" or "spdx")
+            sbom_format: Format detected by validator ("cyclonedx" or "spdx")
             parsed_document: Parsed document from validation step
 
         Returns:
@@ -113,11 +113,11 @@ class SBOMValidator:
             - format: "cyclonedx" or "spdx"
             - version: version string (e.g., "1.6", "2.3")
             - metadata: additional metadata about the document
-            - upload_path: path to file ready for upload (original or converted temp file)
+            - upload_path: path to upload-ready SBOM (original or converted)
 
         Raises:
             FileSystemError: If the file doesn't exist or can't be read
-            ValidationError: If the file is not a valid SBOM or unsupported format/version
+            ValidationError: If SBOM is invalid or unsupported format/version
         """
         # Validate the SBOM file
         sbom_format, version, metadata, parsed_document = (
@@ -250,7 +250,7 @@ class SBOMValidator:
             schema_version = version_mapping.get(spec_version)
             if not schema_version:
                 raise ValidationError(
-                    f"Unknown CycloneDX version {spec_version}. Supported versions for validation: {', '.join(version_mapping.keys())}"
+                    f"Unknown CycloneDX version {spec_version}. Supported versions: {', '.join(version_mapping.keys())}"
                 )
 
             # Validate using the official validator for the detected version
