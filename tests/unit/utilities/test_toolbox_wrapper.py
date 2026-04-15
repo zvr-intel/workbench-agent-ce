@@ -103,7 +103,8 @@ class TestToolboxWrapperGenerateHashes:
         ), "Result file should not be empty"
 
         # Clean up
-        toolbox_wrapper.cleanup_temp_file(result_file)
+        if os.path.exists(result_file):
+            os.remove(result_file)
 
     def test_generate_hashes_with_dependency_analysis(
         self, toolbox_wrapper
@@ -130,7 +131,8 @@ class TestToolboxWrapperGenerateHashes:
         ), "Result file should not be empty"
 
         # Clean up
-        toolbox_wrapper.cleanup_temp_file(result_file)
+        if os.path.exists(result_file):
+            os.remove(result_file)
 
     def test_generate_hashes_path_not_exists(self, toolbox_wrapper):
         """Test hash generation when input path doesn't exist."""
@@ -163,7 +165,8 @@ class TestToolboxWrapperGenerateHashes:
             ), "Result file should have .fossid extension"
 
             # Clean up
-            toolbox_wrapper.cleanup_temp_file(result_file)
+            if os.path.exists(result_file):
+                os.remove(result_file)
         finally:
             # Clean up temp input file
             if os.path.exists(tmp_path):
@@ -201,54 +204,3 @@ class TestToolboxWrapperRandstring:
             assert char in valid_chars
 
 
-class TestToolboxWrapperCleanupTempFile:
-    """Test the cleanup_temp_file method."""
-
-    @pytest.fixture
-    def toolbox_wrapper(self):
-        """Create a ToolboxWrapper instance for testing."""
-        toolbox_path = (
-            shutil.which("fossid-toolbox")
-            or "/usr/local/bin/fossid-toolbox"
-        )
-        try:
-            return ToolboxWrapper(toolbox_path)
-        except FileSystemError:
-            pytest.skip("fossid-toolbox not available")
-
-    def test_cleanup_success(self, toolbox_wrapper):
-        """Test successful file cleanup."""
-        # Create a temporary file to clean up
-        with tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".fossid"
-        ) as tmp_file:
-            tmp_path = tmp_file.name
-            tmp_file.write("test content")
-
-        assert os.path.exists(
-            tmp_path
-        ), "Temp file should exist before cleanup"
-
-        result = toolbox_wrapper.cleanup_temp_file(tmp_path)
-
-        assert result is True
-        assert not os.path.exists(
-            tmp_path
-        ), "Temp file should be deleted after cleanup"
-
-    def test_cleanup_file_not_exists(self, toolbox_wrapper):
-        """Test cleanup when file doesn't exist."""
-        result = toolbox_wrapper.cleanup_temp_file(
-            "/tmp/nonexistent_file_12345.fossid"
-        )
-        assert result is False
-
-    def test_cleanup_empty_path(self, toolbox_wrapper):
-        """Test cleanup with empty file path."""
-        result = toolbox_wrapper.cleanup_temp_file("")
-        assert result is False
-
-    def test_cleanup_none_path(self, toolbox_wrapper):
-        """Test cleanup with None file path."""
-        result = toolbox_wrapper.cleanup_temp_file(None)
-        assert result is False

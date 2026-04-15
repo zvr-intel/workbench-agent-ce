@@ -1,7 +1,7 @@
 """
 Pre-flight check utilities for ensuring scans are idle before operations.
 
-These functions are performed early by handlers to ensure they aren't impacted by running operations.
+These functions help handlers avoid impacting running operations.
 """
 
 import argparse
@@ -45,7 +45,7 @@ def scan_pre_flight_check(
         )
         return
 
-    print("\nEnsuring the Scan is idle before uploading code...")
+    print("\nEnsuring the Scan is Idle...")
 
     # Check each process type individually
     try:
@@ -135,7 +135,7 @@ def scan_git_pre_flight_check(
         )
         return
 
-    print("Ensuring the Scan is idle before Git clone...")
+    print("Ensuring the Scan is Idle...")
 
     # Check each process type individually
     try:
@@ -222,7 +222,7 @@ def blind_scan_pre_flight_check(
         )
         return
 
-    print("\nEnsuring the Scan is idle...")
+    print("\nEnsuring the Scan is Idle...")
 
     # Check each process type individually
     try:
@@ -290,7 +290,7 @@ def import_da_pre_flight_check(
         )
         return
 
-    print("\nEnsuring Scan is idle before starting import...")
+    print("\nEnsuring Scan is Idle...")
 
     try:
         # Check if DA is active and wait if needed
@@ -336,7 +336,7 @@ def import_sbom_pre_flight_check(
         )
         return
 
-    print("\nEnsuring the Scan is idle before starting SBOM import...")
+    print("\nEnsuring the Scan is Idle...")
 
     try:
         # Check if report import is active and wait if needed
@@ -377,7 +377,7 @@ def show_results_pre_flight_check(
             - scan_number_of_tries: Maximum attempts for waiting
             - scan_wait_time: Seconds to wait between attempts
     """
-    print("\nEnsuring scans finished before showing results...")
+    print("\nEnsuring Scans are Complete...")
 
     try:
         # Check if KB scan is complete
@@ -461,7 +461,7 @@ def evaluate_gates_pre_flight_check(
         ApiError: If API operations fail
         NetworkError: If network operations fail
     """
-    print("\nEnsuring scans finished before evaluating gates...")
+    print("\nEnsuring Scans are Complete...")
 
     try:
         # Check if scan is active
@@ -529,7 +529,7 @@ def download_reports_pre_flight_check(
         This function is designed to be called only for scan-scope reports.
         Project-scope reports don't require scan completion checks.
     """
-    print("\nChecking scan completion status...")
+    print("\nEnsuring Scans are Complete...")
 
     # Wait for KB scan
     try:

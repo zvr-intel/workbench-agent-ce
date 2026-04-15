@@ -6,9 +6,10 @@ from typing import TYPE_CHECKING
 
 from workbench_agent.api.exceptions import ProcessError
 from workbench_agent.utilities.error_handling import handler_error_wrapper
-from workbench_agent.utilities.post_scan_summary import print_scan_summary
 from workbench_agent.utilities.pre_flight_checks import scan_pre_flight_check
-from workbench_agent.utilities.scan_workflows import determine_scans_to_run
+from workbench_agent.utilities.scan_workflows import (
+    execute_scan_workflow,
+)
 
 if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
@@ -23,21 +24,16 @@ def handle_scan(
     """
     Handler for the 'scan' command.
 
-    This is the core handler that orchestrates the most common use case:
-    uploading and scanning a codebase to identify licenses, components,
-    and optionally dependencies/vulnerabilities.
+    This handler orchestrates the most common use case:
+    upload a codebase to Workbench and analyze it.
 
     Workflow:
-        1. Validate inputs (path exists, parameters valid)
-        2. Validate and translate ID reuse arguments
-        3. Resolve/create project and scan
-        4. Ensure scan is idle (wait for any ongoing operations)
-        5. Clear existing scan content
-        6. Upload code archive
-        7. Extract archives (if applicable)
-        8. Run KB scan (and/or dependency analysis)
-        9. Wait for completion (unless --no-wait)
-       10. Display results (if requested)
+        1. Resolve/create project and scan
+        2. Ensure scan is idle (wait for ongoing operations)
+        3. Clear existing scan content
+        4. Upload code archive
+        5. Extract archives (if applicable)
+        6. Run scans, wait, and display results
 
     Args:
         client: The Workbench API client instance
@@ -45,14 +41,7 @@ def handle_scan(
             - path: Path to code archive/directory to scan
             - project_name: Name of the project
             - scan_name: Name of the scan
-            - limit: Maximum number of matches per file
-            - sensitivity: Snippet detection sensitivity
-            - autoid_*: Automatic identification flags
-            - reuse_*: Identification reuse options
-            - run_dependency_analysis: Whether to run dependency analysis
-            - dependency_analysis_only: Skip KB scan, only run DA
-            - no_wait: Exit without waiting for completion
-            - show_*: Result display flags
+            - Various scan configuration options
 
     Returns:
         bool: True if the operation completed successfully
@@ -63,25 +52,18 @@ def handle_scan(
         ProjectNotFoundError: If project resolution fails
         ScanNotFoundError: If scan resolution fails
         ProcessError: If scan operations fail
-
-    Note:
-        The handler automatically adapts to different Workbench versions:
-        - Older versions: May not support status checking for all operations
-        - Newer versions: Full status checking and progress tracking
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
 
-    # Initialize timing dictionary
-    durations = {
+    durations: dict = {
         "kb_scan": 0.0,
         "dependency_analysis": 0.0,
         "extraction_duration": 0.0,
     }
 
-    # Note: Path existence is validated at CLI layer (cli/validators.py)
-    # We trust that params.path exists and is accessible
+    # Path existence is validated at CLI layer (cli/validators.py)
 
-    # Resolve project and scan (find or create)
+    # ===== STEP 1: Resolve project and scan =====
     print("\n--- Project and Scan Checks ---")
     print("Checking target Project and Scan...")
     _, scan_code, scan_is_new = client.resolver.resolve_project_and_scan(
@@ -90,264 +72,72 @@ def handle_scan(
         params=params,
     )
 
-    # Assert scan is idle before uploading code
+    # ===== STEP 2: Pre-Flight Checks =====
+    print("\n--- Pre-Flight Checks ---")
     scan_pre_flight_check(client, scan_code, scan_is_new, params)
 
-    # Clear existing scan content (skip for new scans - they're empty)
+    # ===== STEP 3: Clear Existing Content =====
     if not scan_is_new:
         print("\nClearing existing scan content...")
         try:
             client.scans.remove_uploaded_content(scan_code, "")
             print("Successfully cleared existing scan content.")
         except Exception as e:
-            logger.warning(f"Failed to clear existing scan content: {e}")
-            print(f"Warning: Could not clear existing scan content: {e}")
+            logger.warning(
+                f"Failed to clear existing scan content: {e}"
+            )
+            print(
+                f"Warning: Could not clear existing scan content: {e}"
+            )
             print("Continuing with upload...")
     else:
         logger.debug("Skipping content clear - new scan is empty")
 
-    # Upload code to scan
+    # ===== STEP 4: Upload code =====
+    print("\n--- Preparing Scan Target ---")
     print("\nUploading Code to Workbench...")
     client.upload_service.upload_scan_target(scan_code, params.path)
 
-    # Handle archive extraction
+    # ===== STEP 5: Extract archives =====
     print("\nExtracting Uploaded Archive...")
-    extraction_triggered = client.scan_operations.start_archive_extraction(
-        scan_code=scan_code,
-        recursively_extract_archives=params.recursively_extract_archives,
-        jar_file_extraction=params.jar_file_extraction,
+    extraction_triggered = (
+        client.scan_operations.start_archive_extraction(
+            scan_code=scan_code,
+            recursively_extract_archives=(
+                params.recursively_extract_archives
+            ),
+            jar_file_extraction=params.jar_file_extraction,
+        )
     )
 
     if extraction_triggered:
-        extraction_result = client.status_check.check_extract_archives_status(
-            scan_code,
-            wait=True,
-            wait_retry_count=params.scan_number_of_tries,
-            wait_retry_interval=5,
+        extraction_result = (
+            client.status_check.check_extract_archives_status(
+                scan_code,
+                wait=True,
+                wait_retry_count=params.scan_number_of_tries,
+                wait_retry_interval=5,
+            )
         )
-        durations["extraction_duration"] = extraction_result.duration or 0.0
+        durations["extraction_duration"] = (
+            extraction_result.duration or 0.0
+        )
 
-        # BUG FIX: Check if extraction failed or was cancelled
         if extraction_result.status in {"FAILED", "CANCELLED"}:
             error_msg = (
                 extraction_result.error_message
-                or "Archive extraction failed. Scan can not continue."
+                or "Archive extraction failed. "
+                "Scan can not continue."
             )
             raise ProcessError(
-                f"Archive extraction failed for scan '{scan_code}': "
-                f"{error_msg}"
+                f"Archive extraction failed for scan "
+                f"'{scan_code}': {error_msg}"
             )
     else:
         print("No archives to extract. Continuing with scan...")
 
-    # Determine which scan operations to run
-    scan_operations = determine_scans_to_run(params)
-
-    # Initialize completion tracking
-    da_completed = False
-
-    # Handle dependency analysis only mode
-    if (
-        not scan_operations["run_kb_scan"]
-        and scan_operations["run_dependency_analysis"]
-    ):
-        print("\nStarting Dependency Analysis only (skipping KB scan)...")
-        client.scan_operations.start_da_only(scan_code)
-
-        # Handle no-wait mode
-        if getattr(params, "no_wait", False):
-            print("Dependency Analysis has been started.")
-            print(
-                "\nExiting without waiting for completion (--no-wait mode)."
-            )
-            # Always show only link in no-wait mode (avoid stale data)
-            scan_operations["da_completed"] = False
-            print_scan_summary(
-                client,
-                params,
-                scan_code,
-                durations,
-                show_summary=False,
-                scan_operations=scan_operations,
-            )
-            return True
-
-        # Wait for dependency analysis to complete
-        try:
-            da_result = client.status_check.check_dependency_analysis_status(
-                scan_code,
-                wait=True,
-                wait_retry_count=params.scan_number_of_tries,
-                wait_retry_interval=params.scan_wait_time,
-            )
-
-            # Store the duration
-            durations["dependency_analysis"] = da_result.duration or 0.0
-            da_completed = True
-
-            # Show scan summary (includes Workbench link)
-            scan_operations["da_completed"] = da_completed
-            print_scan_summary(
-                client,
-                params,
-                scan_code,
-                durations,
-                show_summary=getattr(params, "show_summary", False),
-                scan_operations=scan_operations,
-            )
-
-            return True
-
-        except Exception as e:
-            logger.error(
-                f"Error waiting for dependency analysis to complete: {e}",
-                exc_info=True,
-            )
-            print(f"\nError: Dependency analysis failed: {e}")
-            return False
-
-    # Start the KB scan (only if run_kb_scan is True)
-    if scan_operations["run_kb_scan"]:
-        print("\nStarting Scan Process...")
-
-        # Resolve ID reuse parameters (if any)
-        id_reuse_type, id_reuse_specific_code = (
-            client.resolver.resolve_id_reuse(
-                id_reuse_any=getattr(
-                    params, "reuse_any_identification", False
-                ),
-                id_reuse_my=getattr(
-                    params, "reuse_my_identifications", False
-                ),
-                id_reuse_project_name=getattr(
-                    params, "reuse_project_ids", None
-                ),
-                id_reuse_scan_name=getattr(params, "reuse_scan_ids", None),
-                current_project_name=params.project_name,
-            )
-        )
-
-        # Run scan with resolved ID reuse parameters
-        client.scan_operations.start_scan(
-            scan_code=scan_code,
-            limit=params.limit,
-            sensitivity=params.sensitivity,
-            autoid_file_licenses=params.autoid_file_licenses,
-            autoid_file_copyrights=params.autoid_file_copyrights,
-            autoid_pending_ids=params.autoid_pending_ids,
-            delta_scan=params.delta_scan,
-            id_reuse_type=id_reuse_type,
-            id_reuse_specific_code=id_reuse_specific_code,
-            run_dependency_analysis=scan_operations[
-                "run_dependency_analysis"
-            ],
-            replace_existing_identifications=getattr(
-                params, "replace_existing_identifications", False
-            ),
-            scan_failed_only=getattr(params, "scan_failed_only", False),
-            full_file_only=getattr(params, "full_file_only", False),
-            advanced_match_scoring=getattr(
-                params, "advanced_match_scoring", True
-            ),
-            match_filtering_threshold=getattr(
-                params, "match_filtering_threshold", None
-            ),
-            scan_host=getattr(params, "scan_host", None),
-        )
-
-        # Check if we should wait for completion
-        if getattr(params, "no_wait", False):
-            print("\nScan started successfully.")
-
-            if scan_operations["run_dependency_analysis"]:
-                print("Dependency Analysis will run after KB scan.")
-
-            print(
-                "\nExiting without waiting for completion (--no-wait mode)."
-            )
-            # Always show only link in no-wait mode (avoid stale data)
-            scan_operations["da_completed"] = False
-            print_scan_summary(
-                client,
-                params,
-                scan_code,
-                durations,
-                show_summary=False,
-                scan_operations=scan_operations,
-            )
-            return True
-        else:
-            # Determine which processes to wait for
-            process_types_to_wait = ["SCAN"]
-            if scan_operations["run_dependency_analysis"]:
-                process_types_to_wait.append("DEPENDENCY_ANALYSIS")
-
-            print(
-                f"\nWaiting for {', '.join(process_types_to_wait)} to complete..."
-            )
-
-            try:
-                # Wait for KB scan completion (with file tracking)
-                kb_scan_result = client.status_check.check_scan_status(
-                    scan_code,
-                    wait=True,
-                    wait_retry_count=params.scan_number_of_tries,
-                    wait_retry_interval=params.scan_wait_time,
-                    should_track_files=True,
-                )
-                durations["kb_scan"] = kb_scan_result.duration or 0.0
-
-                # Wait for dependency analysis if requested
-                if scan_operations["run_dependency_analysis"]:
-                    print(
-                        "\nWaiting for Dependency Analysis to complete..."
-                    )
-                    try:
-                        da_result = (
-                            client.status_check.check_dependency_analysis_status(
-                                scan_code,
-                                wait=True,
-                                wait_retry_count=params.scan_number_of_tries,
-                                wait_retry_interval=params.scan_wait_time,
-                            )
-                        )
-                        durations["dependency_analysis"] = (
-                            da_result.duration or 0.0
-                        )
-                        da_completed = True
-                    except Exception as da_error:
-                        logger.warning(
-                            f"Error in dependency analysis: {da_error}"
-                        )
-                        print(
-                            f"\nWarning: Error waiting for dependency "
-                            f"analysis to complete: {da_error}"
-                        )
-                        da_completed = False
-                else:
-                    da_completed = False
-
-            except Exception as e:
-                logger.error(
-                    f"Error waiting for processes to complete: {e}"
-                )
-                print(
-                    f"\nError: Failed to wait for processes to complete: {e}"
-                )
-                da_completed = False
-
-        # Show scan summary (includes Workbench link)
-        scan_operations["da_completed"] = da_completed
-        print_scan_summary(
-            client,
-            params,
-            scan_code,
-            durations,
-            show_summary=getattr(params, "show_summary", False),
-            scan_operations=scan_operations,
-        )
-
-        return True
-
-    # Fallback return for any unhandled cases
-    return True
+    # ===== STEP 6: Run Scans =====
+    print("\n--- Running Scans ---")
+    return execute_scan_workflow(
+        client, params, scan_code, durations
+    )

@@ -237,7 +237,7 @@ def wait_for_completion(
 
     Raises:
         ProcessTimeoutError: If max_tries exceeded
-        ProcessError: If operation fails (status checking error, not operation failure)
+        ProcessError: If status check fails (not operation failure)
         UnsupportedStatusCheck: If status check not supported
 
     Note:
@@ -298,13 +298,13 @@ def wait_for_completion(
                         operation_name,
                         duration,
                     )
-                    print(
+                    logger.info(
                         f"\n{operation_name} completed successfully "
                         f"({duration:.1f}s)"
                     )
                 else:
                     logger.info("%s completed successfully", operation_name)
-                    print(f"\n{operation_name} completed successfully")
+                    logger.info(f"\n{operation_name} completed successfully")
 
                 return result
 

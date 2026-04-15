@@ -9,7 +9,7 @@ import argparse
 import pytest
 
 from workbench_agent.utilities.scan_workflows import (
-    determine_scans_to_run,
+    _determine_scans_to_run,
 )
 
 # ============================================================================
@@ -35,14 +35,14 @@ def mock_params(mocker):
 
 
 class TestDetermineScansToRun:
-    """Test cases for the determine_scans_to_run function."""
+    """Test cases for the _determine_scans_to_run function."""
 
     def test_default_configuration(self, mock_params):
         """Test default behavior - only KB scan."""
         mock_params.run_dependency_analysis = False
         mock_params.dependency_analysis_only = False
 
-        result = determine_scans_to_run(mock_params)
+        result = _determine_scans_to_run(mock_params)
 
         assert result == {
             "run_kb_scan": True,
@@ -54,7 +54,7 @@ class TestDetermineScansToRun:
         mock_params.run_dependency_analysis = True
         mock_params.dependency_analysis_only = False
 
-        result = determine_scans_to_run(mock_params)
+        result = _determine_scans_to_run(mock_params)
         assert result == {
             "run_kb_scan": True,
             "run_dependency_analysis": True,
@@ -65,7 +65,7 @@ class TestDetermineScansToRun:
         mock_params.run_dependency_analysis = False
         mock_params.dependency_analysis_only = True
 
-        result = determine_scans_to_run(mock_params)
+        result = _determine_scans_to_run(mock_params)
         assert result == {
             "run_kb_scan": False,
             "run_dependency_analysis": True,
@@ -76,7 +76,7 @@ class TestDetermineScansToRun:
         mock_params.run_dependency_analysis = True
         mock_params.dependency_analysis_only = True
 
-        result = determine_scans_to_run(mock_params)
+        result = _determine_scans_to_run(mock_params)
         assert result == {
             "run_kb_scan": False,
             "run_dependency_analysis": True,

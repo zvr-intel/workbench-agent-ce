@@ -232,29 +232,3 @@ class ToolboxWrapper:
         return "".join(
             (random.choice(valid_letters) for i in range(length))
         )
-
-    def cleanup_temp_file(self, file_path: str) -> bool:
-        """
-        Clean up a temporary file created by blind scan.
-
-        Args:
-            file_path: Path to the temporary file to delete
-
-        Returns:
-            bool: True if file was successfully deleted, False otherwise
-        """
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                logger.debug(f"Cleaned up temporary file: {file_path}")
-                return True
-            else:
-                logger.warning(
-                    f"Temporary file does not exist: {file_path}"
-                )
-                return False
-        except Exception as e:
-            logger.error(
-                f"Failed to clean up temporary file {file_path}: {e}"
-            )
-            return False

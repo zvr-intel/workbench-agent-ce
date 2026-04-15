@@ -361,9 +361,9 @@ class StatusCheckService:
     ) -> StatusResult:
         """Collect scan deletion status without waiting.
 
-        Omits ``scan_code`` in the API payload: once deletion finishes the scan
-        row no longer exists and including ``scan_code`` can cause
-        ``row_not_found`` on ``check_status``. The job is keyed by ``process_id``.
+        Uses ``process_id`` and omits ``scan_code`` in the payload.
+        After deletion the scan no longer exists and including ``scan_code``
+        causes ``row_not_found`` on ``check_status``.
         """
         status_data = self._scans.check_status(
             None, "DELETE_SCAN", process_id=process_id
