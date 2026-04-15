@@ -10,7 +10,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from workbench_agent.api.services.results_service import ResultsService
+from workbench_agent.api.services.results_service import (
+    ResultsService,
+    WorkbenchLinks,
+)
 
 # ============================================================================
 # TEST CONSTANTS
@@ -279,3 +282,172 @@ class TestWorkbenchLinks:
         assert (
             "current_view=dependency_analysis" in links.dependencies["url"]
         )
+
+    def test_no_version_uses_legacy_format(self):
+        """No version provided should produce legacy index.html URLs."""
+        links = WorkbenchLinks(TEST_API_URL, TEST_SCAN_ID)
+        assert "index.html" in links.scan["url"]
+        assert "/nui/" not in links.scan["url"]
+
+    def test_old_version_uses_legacy_format(self):
+        """A pre-2026.1 version should produce legacy index.html URLs."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version="2025.2.0"
+        )
+        assert "index.html" in links.scan["url"]
+        assert "/nui/" not in links.scan["url"]
+
+
+# ============================================================================
+# NUI WORKBENCH LINKS TESTS (>= 26.1)
+# ============================================================================
+
+
+# Expected NUI paths for each link property
+EXPECTED_NUI_PATHS = {
+    "scan": "audit/all",
+    "pending": "audit/pending",
+    "identified": "audit/identified",
+    "dependencies": "audit/dependencies",
+    "policy": "risk-review/license-review",
+    "vulnerabilities": "risk-review/security-review",
+}
+
+# Pre-cleaned version strings that should trigger the NUI format
+NUI_VERSIONS = [
+    "2026.1.0",
+    "2026.2.0",
+    "2026.1.1",
+]
+
+# Pre-cleaned version strings that should keep the legacy format
+LEGACY_VERSIONS = [
+    "",
+    "2025.2.0",
+    "2024.3.0",
+]
+
+
+class TestWorkbenchLinksNui:
+    """Test cases for NUI-format Workbench links (>= 26.1)."""
+
+    def test_nui_url_structure(self):
+        """NUI links should use /nui/scans/{scan_id}/... paths."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version="2026.1.0"
+        )
+
+        for prop_name, expected_path in EXPECTED_NUI_PATHS.items():
+            link_data = getattr(links, prop_name)
+            expected_url = (
+                f"{TEST_BASE_URL}/nui/scans/"
+                f"{TEST_SCAN_ID}/{expected_path}"
+            )
+            assert link_data["url"] == expected_url, (
+                f"{prop_name}: expected {expected_url}, "
+                f"got {link_data['url']}"
+            )
+
+    def test_nui_links_have_no_legacy_elements(self):
+        """NUI links must not contain index.html or query parameters."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version="2026.1.0"
+        )
+
+        for prop_name in EXPECTED_NUI_PATHS:
+            url = getattr(links, prop_name)["url"]
+            assert "index.html" not in url
+            assert "form=main_interface" not in url
+            assert "action=scanview" not in url
+            assert "current_view=" not in url
+
+    def test_nui_messages_unchanged(self):
+        """Messages should be identical regardless of URL format."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version="2026.1.0"
+        )
+
+        assert links.scan["message"] == EXPECTED_MESSAGES["scan"]
+        assert links.pending["message"] == EXPECTED_MESSAGES["pending"]
+        assert links.policy["message"] == EXPECTED_MESSAGES["policy"]
+        assert (
+            links.identified["message"] == EXPECTED_MESSAGES["identified"]
+        )
+        assert (
+            links.dependencies["message"]
+            == EXPECTED_MESSAGES["dependencies"]
+        )
+        assert (
+            links.vulnerabilities["message"]
+            == EXPECTED_MESSAGES["vulnerabilities"]
+        )
+
+    def test_nui_link_data_structure(self):
+        """Each NUI link should have the standard {url, message} shape."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version="2026.1.0"
+        )
+        for prop_name in EXPECTED_NUI_PATHS:
+            assert_link_data_structure(getattr(links, prop_name))
+
+    @pytest.mark.parametrize("version", NUI_VERSIONS)
+    def test_nui_version_triggers_nui_format(self, version):
+        """Various >= 26.1 version strings should all produce NUI URLs."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version=version
+        )
+        assert "/nui/scans/" in links.scan["url"]
+        assert "index.html" not in links.scan["url"]
+
+    @pytest.mark.parametrize("version", LEGACY_VERSIONS)
+    def test_legacy_version_keeps_legacy_format(self, version):
+        """Pre-26.1 and empty version strings should produce legacy URLs."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version=version
+        )
+        assert "index.html" in links.scan["url"]
+        assert "/nui/" not in links.scan["url"]
+
+    def test_unparseable_version_falls_back_to_legacy(self):
+        """An invalid version string should gracefully fall back to legacy."""
+        links = WorkbenchLinks(
+            TEST_API_URL, TEST_SCAN_ID, workbench_version="not-a-version"
+        )
+        assert "index.html" in links.scan["url"]
+        assert "/nui/" not in links.scan["url"]
+
+    @pytest.mark.parametrize("api_url", API_URL_VARIANTS)
+    def test_nui_base_url_stripping(self, api_url):
+        """NUI URLs should strip /api.php just like legacy URLs do."""
+        links = WorkbenchLinks(
+            api_url, TEST_SCAN_ID, workbench_version="2026.1.0"
+        )
+        url = links.scan["url"]
+        assert "/api.php" not in url
+        assert "/nui/scans/" in url
+
+    def test_nui_scan_id_in_url(self):
+        """NUI URLs should contain the scan_id in the path."""
+        scan_id = 99999
+        links = WorkbenchLinks(
+            TEST_API_URL, scan_id, workbench_version="2026.1.0"
+        )
+        assert f"/nui/scans/{scan_id}/" in links.scan["url"]
+
+    def test_nui_via_results_service(self):
+        """ResultsService should propagate version to WorkbenchLinks."""
+        mock_scans_client = MagicMock()
+        mock_vulns_client = MagicMock()
+        mock_base_api = MagicMock()
+        mock_base_api.api_url = TEST_API_URL
+        mock_scans_client._api = mock_base_api
+
+        service = ResultsService(
+            mock_scans_client,
+            mock_vulns_client,
+            workbench_version="2026.1.0",
+        )
+        links = service.workbench_links(TEST_SCAN_ID)
+
+        assert "/nui/scans/" in links.scan["url"]
+        assert "index.html" not in links.scan["url"]
