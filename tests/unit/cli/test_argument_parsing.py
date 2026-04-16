@@ -334,3 +334,26 @@ class TestUrlHandling:
 
         parsed = arg_parser(scan_cmd)
         assert parsed.api_url == "https://example.com/api.php"
+
+
+class TestIncrementalUploadFlag:
+    """Test --incremental-upload flag on the scan subcommand."""
+
+    def test_incremental_upload_defaults_to_false(
+        self, args, arg_parser, mock_path_exists
+    ):
+        """--incremental-upload should default to False when not provided."""
+        cmd_args = args().scan().build()
+        parsed = arg_parser(cmd_args)
+
+        assert parsed.incremental_upload is False
+
+    def test_incremental_upload_set_to_true(
+        self, args, arg_parser, mock_path_exists
+    ):
+        """--incremental-upload sets incremental_upload=True."""
+        builder = args().scan()
+        builder.args.append("--incremental-upload")
+        parsed = arg_parser(builder.build())
+
+        assert parsed.incremental_upload is True
