@@ -77,7 +77,7 @@ def handle_scan(
     scan_pre_flight_check(client, scan_code, scan_is_new, params)
 
     # ===== STEP 3: Clear Existing Content =====
-    if not scan_is_new:
+    if not scan_is_new and not params.incremental_upload:
         print("\nClearing existing scan content...")
         try:
             client.scans.remove_uploaded_content(scan_code, "")
@@ -90,6 +90,8 @@ def handle_scan(
                 f"Warning: Could not clear existing scan content: {e}"
             )
             print("Continuing with upload...")
+    elif params.incremental_upload and not scan_is_new:
+        print("Incremental Upload - existing content will be kept.")
     else:
         logger.debug("Skipping content clear - new scan is empty")
 

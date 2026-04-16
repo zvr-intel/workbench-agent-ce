@@ -99,6 +99,13 @@ Examples:
         required=True,
         metavar="PATH",
     )
+    scan_parser.add_argument(
+        "--incremental-upload",
+        help="Upload files without clearing existing scan content."
+        "By default, existing content is cleared before uploading.",
+        action="store_true",
+        default=False,
+    )
 
     # --- 'blind-scan' Subcommand ---
     blind_scan_parser = subparsers.add_parser(
