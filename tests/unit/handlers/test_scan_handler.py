@@ -87,7 +87,7 @@ class TestScanHandlerClearBehavior:
 
         captured = capsys.readouterr()
         assert (
-            "Incremental upload: existing content will be kept."
+            "Incremental Upload - existing content will be kept."
             in captured.out
         )
 
