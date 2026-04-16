@@ -10,6 +10,8 @@ import argparse
 import logging
 from typing import Any, Dict, List
 
+from packaging import version as packaging_version
+
 from workbench_agent.api.exceptions import (
     ApiError,
     NetworkError,
@@ -17,6 +19,8 @@ from workbench_agent.api.exceptions import (
 )
 
 logger = logging.getLogger("workbench-agent")
+
+NUI_MIN_VERSION = "2026.1.0"
 
 
 class WorkbenchLinks:
@@ -26,28 +30,53 @@ class WorkbenchLinks:
     This class is returned by ResultsService.workbench_links() and provides
     convenient property access to different Workbench views.
 
+    For Workbench >= 26.1.0, links use the new ``/nui/`` path-based format.
+    For older versions, the legacy ``index.html`` query-parameter format is
+    used.
+
     Example:
         >>> links = results_service.workbench_links(scan_id=123)
         >>> print(links.pending['url'])
         >>> print(links.scan['message'])
     """
 
-    def __init__(self, api_url: str, scan_id: int):
+    def __init__(
+        self, api_url: str, scan_id: int, workbench_version: str = ""
+    ):
         """
         Initialize WorkbenchLinks.
 
         Args:
             api_url: The Workbench API URL (includes /api.php)
             scan_id: The scan ID
+            workbench_version: Workbench server version string, used to
+                select between legacy and NUI URL formats
         """
         self._api_url = api_url
         self._scan_id = scan_id
         self._base_url = api_url.replace("/api.php", "").rstrip("/")
+        self._nui = self._should_use_nui(workbench_version)
+
+    @staticmethod
+    def _should_use_nui(version_string: str) -> bool:
+        """Return True when *version_string* indicates >= 2026.1.0.
+
+        Expects a pre-cleaned ``MAJOR.MINOR.PATCH`` string (e.g.
+        ``"2026.1.0"``) as produced by ``WorkbenchClient``.
+        """
+        if not version_string:
+            return False
+        try:
+            return packaging_version.parse(
+                version_string
+            ) >= packaging_version.parse(NUI_MIN_VERSION)
+        except packaging_version.InvalidVersion:
+            return False
 
     def _build_link(
         self, view_param: str = None, message: str = ""
     ) -> Dict[str, str]:
-        """Build a single link URL and message."""
+        """Build a legacy-format link URL and message."""
         url = (
             f"{self._base_url}/index.html?"
             f"form=main_interface&action=scanview&sid={self._scan_id}"
@@ -56,9 +85,20 @@ class WorkbenchLinks:
             url += f"&current_view={view_param}"
         return {"url": url, "message": message}
 
+    def _build_nui_link(
+        self, path: str, message: str = ""
+    ) -> Dict[str, str]:
+        """Build a NUI-format (>= 26.1) link URL and message."""
+        url = f"{self._base_url}/nui/scans/{self._scan_id}/{path}"
+        return {"url": url, "message": message}
+
     @property
     def scan(self) -> Dict[str, str]:
         """Link to the main scan view."""
+        if self._nui:
+            return self._build_nui_link(
+                "audit/all", message="View this Scan in Workbench"
+            )
         return self._build_link(
             view_param="all_items", message="View this Scan in Workbench"
         )
@@ -66,6 +106,11 @@ class WorkbenchLinks:
     @property
     def pending(self) -> Dict[str, str]:
         """Link to pending items view."""
+        if self._nui:
+            return self._build_nui_link(
+                "audit/pending",
+                message="Review Pending IDs in Workbench",
+            )
         return self._build_link(
             view_param="pending_items",
             message="Review Pending IDs in Workbench",
@@ -74,6 +119,11 @@ class WorkbenchLinks:
     @property
     def identified(self) -> Dict[str, str]:
         """Link to identified components view."""
+        if self._nui:
+            return self._build_nui_link(
+                "audit/identified",
+                message="View Identified Components in Workbench",
+            )
         return self._build_link(
             view_param="mark_as_identified",
             message="View Identified Components in Workbench",
@@ -82,6 +132,11 @@ class WorkbenchLinks:
     @property
     def dependencies(self) -> Dict[str, str]:
         """Link to dependencies view."""
+        if self._nui:
+            return self._build_nui_link(
+                "audit/dependencies",
+                message="View Dependencies in Workbench",
+            )
         return self._build_link(
             view_param="dependency_analysis",
             message="View Dependencies in Workbench",
@@ -90,6 +145,11 @@ class WorkbenchLinks:
     @property
     def policy(self) -> Dict[str, str]:
         """Link to policy warnings view."""
+        if self._nui:
+            return self._build_nui_link(
+                "risk-review/license-review",
+                message="Review policy warnings in Workbench",
+            )
         return self._build_link(
             view_param="mark_as_identified",
             message="Review policy warnings in Workbench",
@@ -98,6 +158,11 @@ class WorkbenchLinks:
     @property
     def vulnerabilities(self) -> Dict[str, str]:
         """Link to vulnerable components view."""
+        if self._nui:
+            return self._build_nui_link(
+                "risk-review/security-review",
+                message="Review Vulnerable Components in Workbench",
+            )
         return self._build_link(
             view_param="mark_as_identified",
             message="Review Vulnerable Components in Workbench",
@@ -124,7 +189,9 @@ class ResultsService:
         >>> all_results = results_service.fetch_results(scan_code, params)
     """
 
-    def __init__(self, scans_client, vulnerabilities_client):
+    def __init__(
+        self, scans_client, vulnerabilities_client, workbench_version: str = ""
+    ):
         """
         Initialize ResultsService.
 
@@ -132,9 +199,12 @@ class ResultsService:
             scans_client: ScansClient instance for scan-related results
             vulnerabilities_client: VulnerabilitiesClient for vulnerability
                 data
+            workbench_version: Workbench server version string, used to
+                determine URL format for generated links
         """
         self._scans = scans_client
         self._vulnerabilities = vulnerabilities_client
+        self._workbench_version = workbench_version
         logger.debug("ResultsService initialized")
 
     # ===== WORKBENCH UI LINKS =====
@@ -155,7 +225,9 @@ class ResultsService:
             >>> print(links.scan['message'])
         """
         api_url = self._scans._api.api_url
-        return WorkbenchLinks(api_url, scan_id)
+        return WorkbenchLinks(
+            api_url, scan_id, workbench_version=self._workbench_version
+        )
 
     def get_workbench_links(self, scan_code: str) -> WorkbenchLinks:
         """

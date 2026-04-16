@@ -39,6 +39,7 @@ Usage:
 """
 
 import logging
+import re
 
 from packaging import version as packaging_version
 
@@ -166,7 +167,8 @@ class WorkbenchClient:
         # Initialize InternalClient first (needed for version check)
         self.internal = InternalClient(self._base_api)
 
-        # Check Workbench server version compatibility
+        # Check Workbench server version compatibility (also caches version)
+        self._workbench_version = ""
         self._check_version_compatibility()
 
         # Initialize domain-specific clients
@@ -204,6 +206,7 @@ class WorkbenchClient:
         self.results = ResultsService(
             scans_client=self.scans,
             vulnerabilities_client=self.vulnerabilities,
+            workbench_version=self._workbench_version,
         )
 
         self.scan_operations = ScanOperationsService(
@@ -274,17 +277,17 @@ class WorkbenchClient:
             # Parse and compare versions
             try:
                 # Handle version strings that might have extra info
-                # (e.g., "24.3.0-beta", "2025.2.0#19347124129")
-                # Extract just the version number part
-                version_str = workbench_version.split()[
-                    0
-                ]  # Remove anything after space
-                version_str = version_str.split("-")[
-                    0
-                ]  # Remove anything after dash
-                version_str = version_str.split("#")[
-                    0
-                ]  # Remove build metadata after hash
+                # (e.g., "2025.2.0#19347124129", "2026.1.0.v11#24448141686")
+                # Extract the leading MAJOR.MINOR.PATCH portion
+                version_str = workbench_version.split()[0]
+                version_str = version_str.split("-")[0]
+                version_str = version_str.split("#")[0]
+
+                match = re.match(r"(\d+\.\d+\.\d+)", version_str)
+                if match:
+                    version_str = match.group(1)
+
+                self._workbench_version = version_str
 
                 parsed_version = packaging_version.parse(version_str)
                 min_version = packaging_version.parse(MINIMUM_VERSION)
@@ -358,19 +361,25 @@ class WorkbenchClient:
 
     def get_workbench_version(self) -> str:
         """
-        Get the Workbench server version.
+        Get the normalized Workbench server version.
+
+        Returns the MAJOR.MINOR.PATCH version cached during initialization
+        (e.g. ``"2026.1.0"``).  Falls back to a fresh API call if the
+        cache is empty.
 
         Returns:
-            Version string (e.g., "2025.2.0#19347124129", "24.3.0")
+            Normalized version string (e.g., "2026.1.0", "2025.2.0")
 
         Raises:
             ApiError: If unable to fetch version from server
 
         Example:
-            >>> client = WorkbenchClient(url, user, token, check_version=False)
+            >>> client = WorkbenchClient(url, user, token)
             >>> version = client.get_workbench_version()
             >>> print(f"Connected to Workbench {version}")
         """
+        if self._workbench_version:
+            return self._workbench_version
         config_data = self.internal.get_config()
         return config_data.get("version", "Unknown")
 
