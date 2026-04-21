@@ -149,7 +149,7 @@ class ResolverService:
             ...     "MyScan", "MyProject"
             ... )
 
-            >>> # Reuse project_code from find_project (avoids duplicate list_projects)
+            >>> # Reuse project_code from find_project (skip list_projects)
             >>> scan_code, scan_id = resolver.find_scan(
             ...     "MyScan", project_name="MyProject", project_code=pc
             ... )
@@ -169,12 +169,10 @@ class ResolverService:
             )
 
             # Step 1: Resolve project_name to project_code when needed
+            # When project_code is None here, outer condition implies
+            # project_name is not None (otherwise both would be None).
             if project_code is None:
-                if project_name is None:
-                    raise ProjectNotFoundError(
-                        "Project context required: pass project_name or "
-                        "project_code for scoped scan lookup."
-                    )
+                assert project_name is not None
                 project_code = self.find_project(project_name)
             else:
                 logger.debug(
@@ -619,7 +617,10 @@ class ResolverService:
         # Log success
         logging.info("Compatibility check passed! Proceeding...")
         if operation == "scan-git" and existing_git_repo:
-            ref_display = f"{existing_git_ref_type or 'ref'} '{existing_git_ref_value}'"
+            ref_display = (
+                f"{existing_git_ref_type or 'ref'} "
+                f"'{existing_git_ref_value}'"
+            )
             logger.debug(
                 f"Reusing existing scan '{scan_code}' configured for Git "
                 f"repository '{existing_git_repo}' ({ref_display})."

@@ -221,7 +221,7 @@ class ReportService:
 
     def _meets_min_version(self, min_version: str) -> bool:
         """
-        True if connected Workbench meets min_version, or version unknown.
+        True if Workbench meets min_version, or version unknown.
         """
         if not min_version or not self._workbench_version:
             return True
