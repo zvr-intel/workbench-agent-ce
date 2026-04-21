@@ -76,7 +76,9 @@ def handle_show_results(
     logger.debug(f"Found project: {project_code}")
 
     scan_code, scan_id = client.resolver.find_scan(
-        params.scan_name, params.project_name
+        params.scan_name,
+        params.project_name,
+        project_code=project_code,
     )
     logger.debug(f"Found scan: {scan_code} (ID: {scan_id})")
 

@@ -1,6 +1,6 @@
 # tests/unit/api/clients/test_scans_client.py
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -967,3 +967,28 @@ def test_generate_scan_report_error(mock_send, scans_client):
     }
     with pytest.raises(ApiError):
         scans_client.generate_report(payload_data)
+
+
+@patch.object(BaseAPI, "_send_request")
+def test_notice_extract_run_success(mock_send, scans_client):
+    mock_send.return_value = {"status": "1", "data": True}
+    assert scans_client.notice_extract_run("s1", "NOTICE_EXTRACT_FILE") is True
+    payload = mock_send.call_args[0][0]
+    assert payload["action"] == "notice_extract_run"
+    assert payload["data"]["scan_code"] == "s1"
+    assert payload["data"]["type"] == "NOTICE_EXTRACT_FILE"
+
+
+@patch.object(BaseAPI, "_send_request")
+def test_notice_extract_download_raw_response(mock_send, scans_client):
+    raw = MagicMock(spec=requests.Response)
+    mock_send.return_value = {"_raw_response": raw}
+    assert scans_client.notice_extract_download("s1") is raw
+    payload = mock_send.call_args[0][0]
+    assert payload["action"] == "notice_extract_download"
+
+
+@patch.object(BaseAPI, "_send_request")
+def test_notice_extract_download_json_string_data(mock_send, scans_client):
+    mock_send.return_value = {"status": "1", "data": "notice text"}
+    assert scans_client.notice_extract_download("s1") == "notice text"

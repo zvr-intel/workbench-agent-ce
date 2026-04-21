@@ -23,6 +23,40 @@ if TYPE_CHECKING:
 logger = logging.getLogger("workbench-agent")
 
 
+def _resolve_report_types(client: "WorkbenchClient", params: argparse.Namespace):
+    """
+    Parse --report-type (ALL, CSV, or single) and apply version filtering for ALL.
+
+    ALL: drop report types not supported by the connected Workbench (warn).
+    Explicit: validate each type (raises if unsupported for this server).
+    """
+    if params.report_scope == "scan":
+        full_set = client.reports.SCAN_REPORT_TYPES
+    else:
+        full_set = client.reports.PROJECT_REPORT_TYPES
+
+    if params.report_type.upper() == "ALL":
+        skipped = {
+            rt
+            for rt in full_set
+            if not client.reports.is_report_type_supported(rt)
+        }
+        for rt in sorted(skipped):
+            min_v = client.reports.MIN_VERSION_FOR_REPORT_TYPES.get(rt, "?")
+            logger.warning(
+                f"Skipping '{rt}' from ALL: requires Workbench >= {min_v}, "
+                f"server is {client.get_workbench_version()}"
+            )
+        return full_set - skipped
+
+    requested = {
+        rt.strip().lower() for rt in params.report_type.split(",")
+    }
+    for rt in requested:
+        client.reports.validate_report_type(rt, params.report_scope)
+    return requested
+
+
 @handler_error_wrapper
 def handle_download_reports(
     client: "WorkbenchClient", params: argparse.Namespace
@@ -52,39 +86,7 @@ def handle_download_reports(
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
 
-    # Process report_types (comma-separated list or ALL)
-    # Note: argparse sets default="ALL", so report_type is never None
-    report_types = set()
-    if params.report_type.upper() == "ALL":
-        if params.report_scope == "scan":
-            report_types = client.reports.SCAN_REPORT_TYPES
-        else:  # project
-            report_types = client.reports.PROJECT_REPORT_TYPES
-    else:
-        # Split comma-separated list and validate against API capabilities
-        for rt in params.report_type.split(","):
-            rt = rt.strip().lower()
-            # Validate report type (requires API client - can't be done at CLI layer)
-            if (
-                params.report_scope == "scan"
-                and rt not in client.reports.SCAN_REPORT_TYPES
-            ):
-                raise ValidationError(
-                    f"Report type '{rt}' is not supported for scan scope "
-                    f"reports. Supported types: "
-                    f"{', '.join(sorted(list(client.reports.SCAN_REPORT_TYPES)))}"
-                )
-            elif (
-                params.report_scope == "project"
-                and rt not in client.reports.PROJECT_REPORT_TYPES
-            ):
-                raise ValidationError(
-                    f"Report type '{rt}' is not supported for project scope "
-                    f"reports. Supported types: "
-                    f"{', '.join(sorted(list(client.reports.PROJECT_REPORT_TYPES)))}"
-                )
-            report_types.add(rt)
-
+    report_types = _resolve_report_types(client, params)
     logger.debug(f"Resolved report types to download: {report_types}")
 
     # Create output directory if it doesn't exist
@@ -120,6 +122,7 @@ def handle_download_reports(
                 scan_code, _ = client.resolver.find_scan(
                     scan_name=params.scan_name,
                     project_name=params.project_name,
+                    project_code=project_code,
                 )
             else:
                 # Try to resolve globally if project not provided
@@ -168,7 +171,65 @@ def handle_download_reports(
                 else params.scan_name
             )
 
-            # Common parameters for report generation
+            if report_type in client.reports.NOTICE_REPORT_TYPES:
+                notice_api_type = client.reports.NOTICE_REPORT_TYPE_MAP[
+                    report_type
+                ]
+                client.reports.generate_notice_extract(
+                    scan_code, notice_api_type
+                )
+                max_tries = getattr(params, "scan_number_of_tries", 60)
+                try:
+                    print(
+                        f"Waiting for {report_type} report generation to "
+                        f"complete..."
+                    )
+                    client.reports.check_notice_extract_status(
+                        scan_code,
+                        notice_api_type,
+                        wait=True,
+                        wait_retry_count=max_tries,
+                        wait_retry_interval=3,
+                    )
+                except ProcessTimeoutError as e:
+                    logger.error(
+                        f"Failed waiting for '{report_type}' notice extract: {e}"
+                    )
+                    error_count += 1
+                    error_types.append(report_type)
+                    continue
+                except (ApiError, NetworkError) as e:
+                    logger.error(
+                        f"API error during '{report_type}' notice extract: {e}"
+                    )
+                    error_count += 1
+                    error_types.append(report_type)
+                    continue
+                except Exception as e:
+                    logger.error(
+                        f"Unexpected error during '{report_type}' notice "
+                        f"extract: {e}",
+                        exc_info=True,
+                    )
+                    error_count += 1
+                    error_types.append(report_type)
+                    continue
+
+                print(f"Downloading {report_type} report...")
+                response = client.reports.download_notice_extract(
+                    scan_code, notice_api_type
+                )
+                client.reports.save_report(
+                    response,
+                    output_dir,
+                    name_component,
+                    report_type,
+                    scope=params.report_scope,
+                )
+                success_count += 1
+                continue
+
+            # Common parameters for standard report generation
             common_params = {
                 "report_type": report_type,
             }
@@ -210,22 +271,20 @@ def handle_download_reports(
 
                     max_tries = getattr(params, "scan_number_of_tries", 60)
                     if params.report_scope == "project":
-                        # Project report generation
-                        client.status_check.check_project_report_status(
+                        client.reports.check_project_report_status(
                             process_id=process_id,
                             project_code=project_code,
                             wait=True,
                             wait_retry_count=max_tries,
-                            wait_retry_interval=3,  # Fixed 3-second interval
+                            wait_retry_interval=3,
                         )
                     else:
-                        # Scan report generation
-                        client.status_check.check_scan_report_status(
+                        client.reports.check_scan_report_status(
                             scan_code=scan_code,
                             process_id=process_id,
                             wait=True,
                             wait_retry_count=max_tries,
-                            wait_retry_interval=3,  # Fixed 3-second interval
+                            wait_retry_interval=3,
                         )
                 except ProcessTimeoutError as e:
                     logger.error(

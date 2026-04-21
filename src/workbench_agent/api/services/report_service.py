@@ -15,8 +15,9 @@ import re
 from typing import Any, Dict, Optional, Union
 
 import requests
+from packaging import version as packaging_version
 
-from workbench_agent.api.exceptions import ApiError
+from workbench_agent.api.utils.process_waiter import StatusResult
 from workbench_agent.exceptions import FileSystemError, ValidationError
 
 logger = logging.getLogger("workbench-agent")
@@ -58,6 +59,32 @@ class ReportService:
         "spdx_lite",
         "cyclone_dx",
         "string_match",
+        "file-notices",
+        "component-notices",
+        "aggregated-notices",
+    }
+
+    # Notice file reports (scan scope): map CLI name -> API check_status type
+    NOTICE_REPORT_TYPES = {
+        "file-notices",
+        "component-notices",
+        "aggregated-notices",
+    }
+    NOTICE_REPORT_TYPE_MAP = {
+        "file-notices": "NOTICE_EXTRACT_FILE",
+        "component-notices": "NOTICE_EXTRACT_COMPONENT",
+        "aggregated-notices": "NOTICE_EXTRACT_AGGREGATE",
+    }
+
+    # Minimum Workbench version for specific payload fields (API changelog)
+    MIN_VERSION_FOR_FIELDS = {
+        "include_dep_det_info": "25.1.0",
+        "include_vex": "24.3.0",
+    }
+
+    # Minimum Workbench version for specific report types
+    MIN_VERSION_FOR_REPORT_TYPES = {
+        "aggregated-notices": "25.1.0",
     }
     # Reports that require async processing
     ASYNC_REPORT_TYPES = {
@@ -125,6 +152,30 @@ class ReportService:
             "supports_disclaimer": False,
             "supports_report_content_type": False,
         },
+        "file-notices": {
+            "supports_selection_type": False,
+            "supports_selection_view": False,
+            "supports_vex": False,
+            "supports_dep_det_info": False,
+            "supports_disclaimer": False,
+            "supports_report_content_type": False,
+        },
+        "component-notices": {
+            "supports_selection_type": False,
+            "supports_selection_view": False,
+            "supports_vex": False,
+            "supports_dep_det_info": False,
+            "supports_disclaimer": False,
+            "supports_report_content_type": False,
+        },
+        "aggregated-notices": {
+            "supports_selection_type": False,
+            "supports_selection_view": False,
+            "supports_vex": False,
+            "supports_dep_det_info": False,
+            "supports_disclaimer": False,
+            "supports_report_content_type": False,
+        },
     }
 
     # File extension mapping for saving reports
@@ -136,10 +187,19 @@ class ReportService:
         "html": "html",
         "dynamic_top_matched_components": "html",
         "string_match": "xlsx",
-        "basic": "txt",
+        "file-notices": "txt",
+        "component-notices": "txt",
+        "aggregated-notices": "xlsx",
     }
 
-    def __init__(self, projects_client, scans_client, downloads_client):
+    def __init__(
+        self,
+        projects_client,
+        scans_client,
+        downloads_client,
+        status_check_service=None,
+        workbench_version: str = "",
+    ):
         """
         Initialize ReportService.
 
@@ -147,11 +207,76 @@ class ReportService:
             projects_client: ProjectsClient instance for project operations
             scans_client: ScansClient instance for scan operations
             downloads_client: DownloadClient instance for download operations
+            status_check_service: Optional StatusCheckService for wait/poll
+            workbench_version: Connected Workbench version string for gating
         """
         self._projects = projects_client
         self._scans = scans_client
         self._downloads = downloads_client
+        self._status_check = status_check_service
+        self._workbench_version = workbench_version
         logger.debug("ReportService initialized")
+
+    # ===== VERSION HELPERS =====
+
+    def _meets_min_version(self, min_version: str) -> bool:
+        """
+        True if connected Workbench meets min_version, or version unknown.
+        """
+        if not min_version or not self._workbench_version:
+            return True
+        try:
+            return packaging_version.parse(
+                self._workbench_version
+            ) >= packaging_version.parse(min_version)
+        except Exception:
+            return True
+
+    def _is_field_supported(self, field_name: str) -> bool:
+        min_v = self.MIN_VERSION_FOR_FIELDS.get(field_name, "")
+        return self._meets_min_version(min_v)
+
+    def is_report_type_supported(self, report_type: str) -> bool:
+        """
+        Return whether the connected Workbench version supports this type.
+
+        Unknown or unparseable server versions return True (API decides).
+        """
+        min_v = self.MIN_VERSION_FOR_REPORT_TYPES.get(report_type, "")
+        if not min_v:
+            return True
+        return self._meets_min_version(min_v)
+
+    def _ensure_report_version_supported(self, report_type: str) -> None:
+        """
+        Raise ValidationError if this report type needs a newer Workbench.
+        """
+        min_v = self.MIN_VERSION_FOR_REPORT_TYPES.get(report_type)
+        if not min_v or not self._workbench_version:
+            return
+        if self._meets_min_version(min_v):
+            return
+        raise ValidationError(
+            f"Report type '{report_type}' requires Workbench >= {min_v}; "
+            f"connected server is {self._workbench_version}."
+        )
+
+    def validate_report_type(self, report_type: str, scope: str) -> None:
+        """
+        Validate a report type for scope and connected Workbench version.
+
+        Raises:
+            ValidationError: If invalid for scope or Workbench version
+        """
+        if scope == "scan":
+            self.validate_scan_report_type(report_type)
+        elif scope == "project":
+            self.validate_project_report_type(report_type)
+        else:
+            raise ValidationError(
+                f"Invalid report scope '{scope}'. "
+                f"Expected 'scan' or 'project'."
+            )
 
     # ===== VALIDATION METHODS =====
 
@@ -258,6 +383,7 @@ class ReportService:
                 f"project reports. Valid types: "
                 f"{', '.join(sorted(self.PROJECT_REPORT_TYPES))}"
             )
+        self._ensure_report_version_supported(report_type)
 
     def validate_scan_report_type(self, report_type: str) -> None:
         """
@@ -275,6 +401,7 @@ class ReportService:
                 f"scan reports. Valid types: "
                 f"{', '.join(sorted(self.SCAN_REPORT_TYPES))}"
             )
+        self._ensure_report_version_supported(report_type)
 
     def is_async_report_type(self, report_type: str) -> bool:
         """
@@ -363,15 +490,29 @@ class ReportService:
         ):
             payload_data["report_content_type"] = report_content_type
 
-        # Add include_vex parameter if supported
+        # Add include_vex parameter if supported and server version allows
         if capabilities.get("supports_vex"):
-            payload_data["include_vex"] = include_vex
+            if self._is_field_supported("include_vex"):
+                payload_data["include_vex"] = include_vex
+            else:
+                logger.warning(
+                    f"include_vex requires Workbench >= "
+                    f"{self.MIN_VERSION_FOR_FIELDS['include_vex']}; "
+                    f"field omitted (server: {self._workbench_version})"
+                )
 
-        # Add include_dep_det_info parameter if requested and supported
+        # include_dep_det_info: requested, capability, and version OK
         if include_dep_det_info and capabilities.get(
             "supports_dep_det_info"
         ):
-            payload_data["include_dep_det_info"] = include_dep_det_info
+            if self._is_field_supported("include_dep_det_info"):
+                payload_data["include_dep_det_info"] = include_dep_det_info
+            else:
+                logger.warning(
+                    f"include_dep_det_info requires Workbench >= "
+                    f"{self.MIN_VERSION_FOR_FIELDS['include_dep_det_info']}; "
+                    f"field omitted (server: {self._workbench_version})"
+                )
 
         return payload_data
 
@@ -458,15 +599,29 @@ class ReportService:
         ):
             payload_data["report_content_type"] = report_content_type
 
-        # Add include_vex parameter if supported
+        # Add include_vex parameter if supported and server version allows
         if capabilities.get("supports_vex"):
-            payload_data["include_vex"] = include_vex
+            if self._is_field_supported("include_vex"):
+                payload_data["include_vex"] = include_vex
+            else:
+                logger.warning(
+                    f"include_vex requires Workbench >= "
+                    f"{self.MIN_VERSION_FOR_FIELDS['include_vex']}; "
+                    f"field omitted (server: {self._workbench_version})"
+                )
 
-        # Add include_dep_det_info parameter if requested and supported
+        # include_dep_det_info: requested, capability, and version OK
         if include_dep_det_info and capabilities.get(
             "supports_dep_det_info"
         ):
-            payload_data["include_dep_det_info"] = include_dep_det_info
+            if self._is_field_supported("include_dep_det_info"):
+                payload_data["include_dep_det_info"] = include_dep_det_info
+            else:
+                logger.warning(
+                    f"include_dep_det_info requires Workbench >= "
+                    f"{self.MIN_VERSION_FOR_FIELDS['include_dep_det_info']}; "
+                    f"field omitted (server: {self._workbench_version})"
+                )
 
         return payload_data
 
@@ -499,6 +654,11 @@ class ReportService:
             ProjectNotFoundError: If project doesn't exist
             ApiError: If report generation fails
         """
+        if report_type in self.NOTICE_REPORT_TYPES:
+            raise ValidationError(
+                f"Report type '{report_type}' is a notice extract report. "
+                f"Use generate_notice_extract() and related methods instead."
+            )
         # Build payload with validation
         payload_data = self.build_project_report_payload(
             project_code, report_type, **options
@@ -539,6 +699,11 @@ class ReportService:
             ScanNotFoundError: If scan doesn't exist
             ApiError: If report generation fails
         """
+        if report_type in self.NOTICE_REPORT_TYPES:
+            raise ValidationError(
+                f"Report type '{report_type}' is a notice extract report. "
+                f"Use generate_notice_extract() and related methods instead."
+            )
         # Build payload with validation
         payload_data = self.build_scan_report_payload(
             scan_code, report_type, **options
@@ -596,22 +761,60 @@ class ReportService:
 
     # ===== STATUS CHECKING METHODS =====
 
+    def check_scan_report_status(
+        self,
+        scan_code: str,
+        process_id: int,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult:
+        """
+        Check scan report generation status (delegates to StatusCheckService).
+
+        Raises:
+            RuntimeError: If status_check_service was not configured
+        """
+        if self._status_check is None:
+            raise RuntimeError(
+                "status_check_service is not configured on ReportService"
+            )
+        logger.debug(
+            f"Checking scan report status: scan={scan_code}, "
+            f"process_id={process_id}, wait={wait}"
+        )
+        return self._status_check.check_scan_report_status(
+            scan_code,
+            process_id,
+            wait=wait,
+            wait_retry_count=wait_retry_count,
+            wait_retry_interval=wait_retry_interval,
+        )
+
     def check_project_report_status(
-        self, process_id: int, project_code: str
-    ) -> Dict[str, Any]:
+        self,
+        process_id: int,
+        project_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult:
         """
         Check the status of an asynchronous project report generation.
 
         Args:
             process_id: Process queue ID from generate_project_report()
             project_code: Code of the project (for logging context)
+            wait: If True, poll until terminal state
+            wait_retry_count: Max polls when wait=True
+            wait_retry_interval: Seconds between polls when wait=True
 
         Returns:
-            Dict with status information
+            StatusResult with normalized status
 
         Raises:
+            RuntimeError: If status_check_service was not configured
             ApiError: If status check fails
-            NetworkError: If there are network issues
 
         Example:
             >>> process_id = reports.generate_project_report(
@@ -621,16 +824,87 @@ class ReportService:
             ...     process_id, "MyProject"
             ... )
         """
+        if self._status_check is None:
+            raise RuntimeError(
+                "status_check_service is not configured on ReportService"
+            )
         logger.debug(
             f"Checking report generation status for process {process_id} "
             f"(project '{project_code}')..."
         )
-
-        # Delegate to the projects client with report-specific type
-        status_data: Dict[str, Any] = self._projects.check_status(
-            process_id, "REPORT_GENERATION"
+        return self._status_check.check_project_report_status(
+            process_id,
+            project_code,
+            wait=wait,
+            wait_retry_count=wait_retry_count,
+            wait_retry_interval=wait_retry_interval,
         )
-        return status_data
+
+    # ===== NOTICE EXTRACT METHODS =====
+
+    def generate_notice_extract(
+        self, scan_code: str, notice_type: str
+    ) -> bool:
+        """
+        Start notice file generation for a scan (notice_extract_run).
+
+        Args:
+            scan_code: Scan code
+            notice_type: NOTICE_EXTRACT_FILE, NOTICE_EXTRACT_COMPONENT,
+                or NOTICE_EXTRACT_AGGREGATE
+        """
+        return self._scans.notice_extract_run(scan_code, notice_type)
+
+    def check_notice_extract_status(
+        self,
+        scan_code: str,
+        notice_type: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
+    ) -> StatusResult:
+        """
+        Check notice extract status via check_status (delegates by type).
+
+        Args:
+            scan_code: Scan code
+            notice_type: NOTICE_EXTRACT_FILE, NOTICE_EXTRACT_COMPONENT,
+                or NOTICE_EXTRACT_AGGREGATE
+            wait: Poll until terminal state when True
+            wait_retry_count: Max polls when wait is True
+            wait_retry_interval: Seconds between polls when wait is True
+        """
+        if self._status_check is None:
+            raise RuntimeError(
+                "status_check_service is not configured on ReportService"
+            )
+        schk = self._status_check
+        dispatch = {
+            "NOTICE_EXTRACT_FILE": schk.check_notice_extract_file_status,
+            "NOTICE_EXTRACT_COMPONENT": (
+                schk.check_notice_extract_component_status
+            ),
+            "NOTICE_EXTRACT_AGGREGATE": (
+                schk.check_notice_extract_aggregate_status
+            ),
+        }
+        if notice_type not in dispatch:
+            raise ValidationError(
+                f"Unknown notice extract type '{notice_type}'. "
+                f"Expected one of: {', '.join(sorted(dispatch))}"
+            )
+        return dispatch[notice_type](
+            scan_code,
+            wait=wait,
+            wait_retry_count=wait_retry_count,
+            wait_retry_interval=wait_retry_interval,
+        )
+
+    def download_notice_extract(
+        self, scan_code: str, notice_type: str
+    ) -> Union[requests.Response, str]:
+        """Download notice file text (notice_extract_download)."""
+        return self._scans.notice_extract_download(scan_code, notice_type)
 
     def save_report(
         self,

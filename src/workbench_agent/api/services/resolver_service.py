@@ -107,7 +107,10 @@ class ResolverService:
         raise ProjectNotFoundError(f"Project '{project_name}' not found")
 
     def find_scan(
-        self, scan_name: str, project_name: Optional[str] = None
+        self,
+        scan_name: str,
+        project_name: Optional[str] = None,
+        project_code: Optional[str] = None,
     ) -> Tuple[str, int]:
         """
         Find a scan by name. Raises if not found.
@@ -127,6 +130,10 @@ class ResolverService:
                          (uses efficient projects->get_all_scans).
                          If None, searches globally using scans->list_scans
                          (heavy operation - avoid if possible).
+            project_code: If set together with a project-scoped lookup,
+                         used directly so ``list_projects`` is not called.
+                         Pass this when the caller already resolved the
+                         project (e.g. after ``find_project``).
 
         Returns:
             Tuple[str, int]: (scan_code, scan_id)
@@ -142,21 +149,38 @@ class ResolverService:
             ...     "MyScan", "MyProject"
             ... )
 
+            >>> # Reuse project_code from find_project (avoids duplicate list_projects)
+            >>> scan_code, scan_id = resolver.find_scan(
+            ...     "MyScan", project_name="MyProject", project_code=pc
+            ... )
+
             >>> # Find scan globally (heavy - rarely needed)
             >>> scan_code, scan_id = resolver.find_scan("MyScan")
         """
-        if project_name:
+        if project_name is not None or project_code is not None:
             # Efficient path: Search within specific project
             # Flow: project_name → [list_projects] → project_code →
             #       [get_all_scans] → scan list
+            # Or: caller passes project_code → [get_all_scans] only
+            log_project = project_name or project_code or "?"
             logger.debug(
                 f"Looking up scan '{scan_name}' "
-                f"in project '{project_name}'..."
+                f"in project '{log_project}'..."
             )
 
-            # Step 1: Resolve project_name to project_code
-            # This requires projects->list_projects
-            project_code = self.find_project(project_name)
+            # Step 1: Resolve project_name to project_code when needed
+            if project_code is None:
+                if project_name is None:
+                    raise ProjectNotFoundError(
+                        "Project context required: pass project_name or "
+                        "project_code for scoped scan lookup."
+                    )
+                project_code = self.find_project(project_name)
+            else:
+                logger.debug(
+                    f"Using provided project_code '{project_code}' "
+                    f"(skipping list_projects)"
+                )
 
             # Step 2: Get scans for this specific project
             # This uses projects->get_all_scans (efficient, scoped)
@@ -175,7 +199,8 @@ class ResolverService:
 
             # Scan not found in this project
             raise ScanNotFoundError(
-                f"Scan '{scan_name}' not found in project '{project_name}'"
+                f"Scan '{scan_name}' not found in project "
+                f"'{project_name or project_code}'"
             )
         else:
             # Heavy path: Global search across all scans
@@ -253,7 +278,9 @@ class ResolverService:
         scan_is_new = False
         try:
             scan_code, _ = self.find_scan(
-                scan_name=scan_name, project_name=project_name
+                scan_name=scan_name,
+                project_name=project_name,
+                project_code=project_code,
             )
         except ScanNotFoundError:
             scan_code, _ = self._create_scan(

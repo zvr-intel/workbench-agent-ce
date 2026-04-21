@@ -531,6 +531,26 @@ def test_find_scan_not_found_in_project(
         )
 
 
+def test_find_scan_with_project_code_skips_list_projects(
+    resolver_service, mock_projects_client, mock_scans_client
+):
+    """When project_code is passed, list_projects is not called again."""
+    mock_projects_client.get_all_scans.return_value = [
+        {"name": "TestScan", "code": "SCAN456", "id": 789},
+    ]
+
+    result_code, result_id = resolver_service.find_scan(
+        scan_name="TestScan",
+        project_name="TestProject",
+        project_code="PROJ123",
+    )
+
+    assert result_code == "SCAN456"
+    assert result_id == 789
+    mock_projects_client.list_projects.assert_not_called()
+    mock_projects_client.get_all_scans.assert_called_once_with("PROJ123")
+
+
 def test_find_scan_global_search_single_result(
     resolver_service, mock_scans_client
 ):
@@ -615,19 +635,15 @@ def test_resolve_project_and_scan_both_exist(
     assert project_code == "PROJ123"
     assert scan_code == "SCAN456"
     assert scan_is_new is False
+    mock_projects_client.list_projects.assert_called_once()
 
 
 def test_resolve_project_and_scan_create_project(
     resolver_service, mock_projects_client, mock_scans_client, mock_params
 ):
     """Test resolving when project doesn't exist."""
-    # First call - project doesn't exist (find_project raises)
-    mock_projects_client.list_projects.side_effect = [
-        [],  # First call - project doesn't exist
-        [
-            {"project_name": "NewProject", "project_code": "PROJ789"}
-        ],  # After creation
-    ]
+    # find_project only: project missing; find_scan uses project_code (no 2nd list)
+    mock_projects_client.list_projects.return_value = []
     mock_projects_client.create.return_value = "PROJ789"
     # Scan doesn't exist initially, then exists after creation
     mock_projects_client.get_all_scans.side_effect = [

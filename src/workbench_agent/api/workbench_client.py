@@ -201,6 +201,8 @@ class WorkbenchClient:
             projects_client=self.projects,
             scans_client=self.scans,
             downloads_client=self.downloads,
+            status_check_service=self.status_check,
+            workbench_version=self._workbench_version,
         )
 
         self.results = ResultsService(
