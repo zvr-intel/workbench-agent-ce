@@ -500,6 +500,7 @@ def mock_workbench_api(mocker):
 
     # --- Mock Reports Service ---
     mock_client.reports = MagicMock()
+    mock_client.reports.resolve_report_types.return_value = {"spdx"}
 
     # --- Mock Internal Client (for version check) ---
     mock_client.internal = MagicMock()

@@ -10,6 +10,7 @@ from workbench_agent.api.exceptions import (
     NetworkError,
     ProcessTimeoutError,
 )
+from workbench_agent.api.utils import report_definitions
 from workbench_agent.exceptions import FileSystemError, ValidationError
 from workbench_agent.utilities.error_handling import handler_error_wrapper
 from workbench_agent.utilities.post_report_summary import print_report_summary
@@ -21,40 +22,6 @@ if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
 
 logger = logging.getLogger("workbench-agent")
-
-
-def _resolve_report_types(client: "WorkbenchClient", params: argparse.Namespace):
-    """
-    Parse --report-type (ALL, CSV, or single) and apply version filtering for ALL.
-
-    ALL: drop report types not supported by the connected Workbench (warn).
-    Explicit: validate each type (raises if unsupported for this server).
-    """
-    if params.report_scope == "scan":
-        full_set = client.reports.SCAN_REPORT_TYPES
-    else:
-        full_set = client.reports.PROJECT_REPORT_TYPES
-
-    if params.report_type.upper() == "ALL":
-        skipped = {
-            rt
-            for rt in full_set
-            if not client.reports.is_report_type_supported(rt)
-        }
-        for rt in sorted(skipped):
-            min_v = client.reports.MIN_VERSION_FOR_REPORT_TYPES.get(rt, "?")
-            logger.warning(
-                f"Skipping '{rt}' from ALL: requires Workbench >= {min_v}, "
-                f"server is {client.get_workbench_version()}"
-            )
-        return full_set - skipped
-
-    requested = {
-        rt.strip().lower() for rt in params.report_type.split(",")
-    }
-    for rt in requested:
-        client.reports.validate_report_type(rt, params.report_scope)
-    return requested
 
 
 @handler_error_wrapper
@@ -86,7 +53,11 @@ def handle_download_reports(
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
 
-    report_types = _resolve_report_types(client, params)
+    report_types = client.reports.resolve_report_types(
+        params.report_scope,
+        params.report_type,
+        server_version=client.get_workbench_version(),
+    )
     logger.debug(f"Resolved report types to download: {report_types}")
 
     # Create output directory if it doesn't exist
@@ -159,192 +130,59 @@ def handle_download_reports(
     error_types = []
 
     # Process each report type sequentially
+    max_tries = getattr(params, "scan_number_of_tries", 60)
     for report_type in sorted(report_types):
         try:
-            # Generate the report
             print(f"\nGenerating {report_type} report...")
 
-            # Get the right name component for file naming
             name_component = (
                 params.project_name
                 if params.report_scope == "project"
                 else params.scan_name
             )
 
-            if report_type in client.reports.NOTICE_REPORT_TYPES:
-                notice_api_type = client.reports.NOTICE_REPORT_TYPE_MAP[
-                    report_type
-                ]
-                client.reports.generate_notice_extract(
-                    scan_code, notice_api_type
-                )
-                max_tries = getattr(params, "scan_number_of_tries", 60)
-                try:
-                    print(
-                        f"Waiting for {report_type} report generation to "
-                        f"complete..."
-                    )
-                    client.reports.check_notice_extract_status(
-                        scan_code,
-                        notice_api_type,
-                        wait=True,
-                        wait_retry_count=max_tries,
-                        wait_retry_interval=3,
-                    )
-                except ProcessTimeoutError as e:
-                    logger.error(
-                        f"Failed waiting for '{report_type}' notice extract: {e}"
-                    )
-                    error_count += 1
-                    error_types.append(report_type)
-                    continue
-                except (ApiError, NetworkError) as e:
-                    logger.error(
-                        f"API error during '{report_type}' notice extract: {e}"
-                    )
-                    error_count += 1
-                    error_types.append(report_type)
-                    continue
-                except Exception as e:
-                    logger.error(
-                        f"Unexpected error during '{report_type}' notice "
-                        f"extract: {e}",
-                        exc_info=True,
-                    )
-                    error_count += 1
-                    error_types.append(report_type)
-                    continue
-
-                print(f"Downloading {report_type} report...")
-                response = client.reports.download_notice_extract(
-                    scan_code, notice_api_type
-                )
-                client.reports.save_report(
-                    response,
-                    output_dir,
-                    name_component,
-                    report_type,
-                    scope=params.report_scope,
-                )
-                success_count += 1
-                continue
-
-            # Common parameters for standard report generation
-            common_params = {
-                "report_type": report_type,
-            }
-
-            # Add optional parameters if they were provided
+            gen_kwargs: dict = {}
             if params.selection_type is not None:
-                common_params["selection_type"] = params.selection_type
-
+                gen_kwargs["selection_type"] = params.selection_type
             if params.selection_view is not None:
-                common_params["selection_view"] = params.selection_view
-
+                gen_kwargs["selection_view"] = params.selection_view
             if params.disclaimer is not None:
-                common_params["disclaimer"] = params.disclaimer
+                gen_kwargs["disclaimer"] = params.disclaimer
+            gen_kwargs["include_vex"] = params.include_vex
 
-            # Include VEX data if requested (default is True)
-            common_params["include_vex"] = params.include_vex
+            # Match ``run_and_download_report``: notice extracts poll even though
+            # they are not ``is_async``; async types poll for queue completion.
+            # Use the registry (not ``client.reports``) so this stays correct
+            # when ``client.reports`` is a MagicMock.
+            needs_wait = (
+                report_type in report_definitions.NOTICE_REPORT_TYPES
+                or report_type in report_definitions.ASYNC_REPORT_TYPES
+            )
+            if needs_wait:
+                print(
+                    f"Waiting for {report_type} report generation to "
+                    f"complete..."
+                )
 
-            # Check if this report type is synchronous or asynchronous
-            is_async = client.reports.is_async_report_type(report_type)
-
-            # Start report generation
-            if is_async:
-                # Asynchronous report generation
-                if params.report_scope == "project":
-                    process_id = client.reports.generate_project_report(
-                        project_code, **common_params
-                    )
-                else:
-                    process_id = client.reports.generate_scan_report(
-                        scan_code, **common_params
-                    )
-
-                # Wait for report generation to complete
-                try:
-                    print(
-                        f"Waiting for {report_type} report generation to "
-                        f"complete..."
-                    )
-
-                    max_tries = getattr(params, "scan_number_of_tries", 60)
-                    if params.report_scope == "project":
-                        client.reports.check_project_report_status(
-                            process_id=process_id,
-                            project_code=project_code,
-                            wait=True,
-                            wait_retry_count=max_tries,
-                            wait_retry_interval=3,
-                        )
-                    else:
-                        client.reports.check_scan_report_status(
-                            scan_code=scan_code,
-                            process_id=process_id,
-                            wait=True,
-                            wait_retry_count=max_tries,
-                            wait_retry_interval=3,
-                        )
-                except ProcessTimeoutError as e:
-                    logger.error(
-                        f"Failed waiting for '{report_type}' report "
-                        f"(Process ID: {process_id}): {e}"
-                    )
-                    error_count += 1
-                    error_types.append(report_type)
-                    continue
-                except (ApiError, NetworkError) as e:
-                    logger.error(
-                        f"API error during '{report_type}' report generation "
-                        f"(Process ID: {process_id}): {e}"
-                    )
-                    error_count += 1
-                    error_types.append(report_type)
-                    continue
-                except Exception as e:
-                    logger.error(
-                        f"Unexpected error during '{report_type}' report "
-                        f"generation (Process ID: {process_id}): {e}",
-                        exc_info=True,
-                    )
-                    error_count += 1
-                    error_types.append(report_type)
-                    continue
-
-                # Download the generated report
-                print(f"Downloading {report_type} report...")
-                if params.report_scope == "project":
-                    response = client.reports.download_project_report(
-                        process_id
-                    )
-                else:
-                    response = client.reports.download_scan_report(
-                        process_id
-                    )
-
-            else:
-                # Synchronous report generation (returns response directly)
-                print(f"Downloading {report_type} report...")
-                if params.report_scope == "project":
-                    # Note: Project reports are typically async
-                    response = client.reports.generate_project_report(
-                        project_code, **common_params
-                    )
-                else:
-                    response = client.reports.generate_scan_report(
-                        scan_code, **common_params
-                    )
-
-            # Save the report content
-            client.reports.save_report(
-                response,
+            client.reports.run_and_download_report(
+                params.report_scope,
+                report_type,
                 output_dir,
                 name_component,
-                report_type,
-                scope=params.report_scope,
+                scan_code=scan_code,
+                project_code=project_code,
+                wait_retry_count=max_tries,
+                wait_retry_interval=3,
+                **gen_kwargs,
             )
             success_count += 1
+
+        except ProcessTimeoutError as e:
+            logger.error(
+                f"Failed waiting for '{report_type}' report: {e}"
+            )
+            error_count += 1
+            error_types.append(report_type)
 
         except (
             ApiError,
@@ -358,6 +196,18 @@ def handle_download_reports(
             )
             logger.error(
                 f"Failed to generate/download {report_type} report: {e}",
+                exc_info=True,
+            )
+            error_count += 1
+            error_types.append(report_type)
+
+        except Exception as e:
+            print(
+                f"Error processing {report_type} report: "
+                f"{getattr(e, 'message', str(e))}"
+            )
+            logger.error(
+                f"Unexpected failure for {report_type} report: {e}",
                 exc_info=True,
             )
             error_count += 1

@@ -962,3 +962,126 @@ class TestReportVersionGating:
             "s1", "NOTICE_EXTRACT_FILE", wait=False
         )
         mock_status_check.check_notice_extract_file_status.assert_called_once()
+
+
+class TestResolveReportTypes:
+    """Tests for resolve_report_types (ALL vs explicit)."""
+
+    def test_all_excludes_types_below_min_version(self):
+        """ALL drops report types not supported by connected version."""
+        from unittest.mock import MagicMock
+
+        svc = ReportService(
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            status_check_service=MagicMock(),
+            workbench_version="24.0.0",
+        )
+        result = svc.resolve_report_types(
+            "scan", "ALL", server_version="24.0.0"
+        )
+        assert "aggregated-notices" not in result
+        assert "html" in result
+
+    def test_explicit_comma_separated(self, report_service):
+        result = report_service.resolve_report_types("scan", " html , xlsx ")
+        assert result == {"html", "xlsx"}
+
+    def test_invalid_scope_raises(self, report_service):
+        with pytest.raises(ValidationError, match="Invalid report scope"):
+            report_service.resolve_report_types("invalid", "ALL")
+
+
+class TestRunAndDownloadReport:
+    """SDK convenience: generate, wait when needed, download, save."""
+
+    def test_sync_scan_skips_status_poll(
+        self, report_service, mock_scans_client, mock_status_check
+    ):
+        mock_resp = MagicMock(spec=requests.Response)
+        mock_scans_client.generate_report.return_value = mock_resp
+        with patch.object(
+            report_service, "save_report", return_value="/out/p"
+        ) as save:
+            path = report_service.run_and_download_report(
+                "scan",
+                "html",
+                "/out",
+                "MyScan",
+                scan_code="s1",
+                wait_retry_count=1,
+                wait_retry_interval=1,
+            )
+        assert path == "/out/p"
+        save.assert_called_once()
+        mock_scans_client.generate_report.assert_called_once()
+        mock_status_check.check_scan_report_status.assert_not_called()
+
+    def test_async_scan_polls_and_downloads(
+        self,
+        report_service,
+        mock_scans_client,
+        mock_downloads_client,
+        mock_status_check,
+    ):
+        mock_scans_client.generate_report.return_value = 99
+        dl = MagicMock(spec=requests.Response)
+        mock_downloads_client.download_report.return_value = dl
+        with patch.object(
+            report_service, "save_report", return_value="/saved/here"
+        ):
+            path = report_service.run_and_download_report(
+                "scan",
+                "xlsx",
+                "/out",
+                "S",
+                scan_code="sc",
+            )
+        assert path == "/saved/here"
+        mock_status_check.check_scan_report_status.assert_called_once()
+        mock_downloads_client.download_report.assert_called_once_with(
+            "scans", 99
+        )
+
+    def test_notice_extract_requires_status_check(self):
+        from unittest.mock import MagicMock
+
+        svc = ReportService(
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            status_check_service=None,
+            workbench_version="25.1.0",
+        )
+        with pytest.raises(RuntimeError, match="status_check_service"):
+            svc.run_and_download_report(
+                "scan",
+                "file-notices",
+                "/o",
+                "n",
+                scan_code="s",
+            )
+
+    def test_notice_extract_happy_path(
+        self, report_service, mock_scans_client, mock_status_check
+    ):
+        mock_scans_client.notice_extract_run.return_value = True
+        mock_status_check.check_notice_extract_file_status.return_value = (
+            StatusResult(status="FINISHED", raw_data={})
+        )
+        resp = MagicMock(spec=requests.Response)
+        mock_scans_client.notice_extract_download.return_value = resp
+        with patch.object(
+            report_service, "save_report", return_value="/o/f.txt"
+        ):
+            path = report_service.run_and_download_report(
+                "scan",
+                "file-notices",
+                "/o",
+                "scanA",
+                scan_code="s1",
+            )
+        assert path == "/o/f.txt"
+        mock_scans_client.notice_extract_run.assert_called_once()
+        mock_scans_client.notice_extract_download.assert_called_once()

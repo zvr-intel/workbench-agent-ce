@@ -12,11 +12,12 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Set, Union
 
 import requests
 from packaging import version as packaging_version
 
+from workbench_agent.api.utils import report_definitions
 from workbench_agent.api.utils.process_waiter import StatusResult
 from workbench_agent.exceptions import FileSystemError, ValidationError
 
@@ -49,148 +50,13 @@ class ReportService:
         ... )
     """
 
-    # Report type constants
-    PROJECT_REPORT_TYPES = {"xlsx", "spdx", "spdx_lite", "cyclone_dx"}
-    SCAN_REPORT_TYPES = {
-        "html",
-        "dynamic_top_matched_components",
-        "xlsx",
-        "spdx",
-        "spdx_lite",
-        "cyclone_dx",
-        "string_match",
-        "file-notices",
-        "component-notices",
-        "aggregated-notices",
-    }
-
-    # Notice file reports (scan scope): map CLI name -> API check_status type
-    NOTICE_REPORT_TYPES = {
-        "file-notices",
-        "component-notices",
-        "aggregated-notices",
-    }
-    NOTICE_REPORT_TYPE_MAP = {
-        "file-notices": "NOTICE_EXTRACT_FILE",
-        "component-notices": "NOTICE_EXTRACT_COMPONENT",
-        "aggregated-notices": "NOTICE_EXTRACT_AGGREGATE",
-    }
-
-    # Minimum Workbench version for specific payload fields (API changelog)
-    MIN_VERSION_FOR_FIELDS = {
-        "include_dep_det_info": "25.1.0",
-        "include_vex": "24.3.0",
-    }
-
-    # Minimum Workbench version for specific report types
-    MIN_VERSION_FOR_REPORT_TYPES = {
-        "aggregated-notices": "25.1.0",
-    }
-    # Reports that require async processing
-    ASYNC_REPORT_TYPES = {
-        "xlsx",
-        "spdx",
-        "spdx_lite",
-        "cyclone_dx",
-    }
-
-    # Report type capabilities - defines what parameters each type supports
-    REPORT_TYPE_CAPABILITIES = {
-        "xlsx": {
-            "supports_selection_type": True,
-            "supports_selection_view": True,
-            "supports_vex": True,
-            "supports_dep_det_info": True,
-            "supports_disclaimer": False,
-            "supports_report_content_type": True,
-        },
-        "spdx": {
-            "supports_selection_type": True,
-            "supports_selection_view": True,
-            "supports_vex": False,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-        "spdx_lite": {
-            "supports_selection_type": True,
-            "supports_selection_view": True,
-            "supports_vex": False,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-        "cyclone_dx": {
-            "supports_selection_type": False,
-            "supports_selection_view": False,
-            "supports_vex": True,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-        "html": {
-            "supports_selection_type": True,
-            "supports_selection_view": True,
-            "supports_vex": True,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": True,
-            "supports_report_content_type": True,  # Scan basic HTML
-        },
-        "dynamic_top_matched_components": {
-            "supports_selection_type": False,
-            "supports_selection_view": False,
-            "supports_vex": False,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-        "string_match": {
-            "supports_selection_type": False,
-            "supports_selection_view": True,
-            "supports_vex": False,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-        "file-notices": {
-            "supports_selection_type": False,
-            "supports_selection_view": False,
-            "supports_vex": False,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-        "component-notices": {
-            "supports_selection_type": False,
-            "supports_selection_view": False,
-            "supports_vex": False,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-        "aggregated-notices": {
-            "supports_selection_type": False,
-            "supports_selection_view": False,
-            "supports_vex": False,
-            "supports_dep_det_info": False,
-            "supports_disclaimer": False,
-            "supports_report_content_type": False,
-        },
-    }
-
-    # File extension mapping for saving reports
-    EXTENSION_MAP = {
-        "xlsx": "xlsx",
-        "spdx": "rdf",
-        "spdx_lite": "xlsx",
-        "cyclone_dx": "json",
-        "html": "html",
-        "dynamic_top_matched_components": "html",
-        "string_match": "xlsx",
-        "file-notices": "txt",
-        "component-notices": "txt",
-        "aggregated-notices": "xlsx",
-    }
+    REPORT_DEFS = report_definitions.REPORT_DEFS
+    ASYNC_REPORT_TYPES = report_definitions.ASYNC_REPORT_TYPES
+    NOTICE_REPORT_TYPE_MAP = report_definitions.NOTICE_REPORT_TYPE_MAP
+    NOTICE_REPORT_TYPES = report_definitions.NOTICE_REPORT_TYPES
+    MIN_VERSION_FOR_FIELDS = report_definitions.MIN_VERSION_FOR_FIELDS
+    MIN_VERSION_FOR_REPORT_TYPES = report_definitions.MIN_VERSION_FOR_REPORT_TYPES
+    EXTENSION_MAP = report_definitions.EXTENSION_MAP
 
     def __init__(
         self,
@@ -216,6 +82,29 @@ class ReportService:
         self._status_check = status_check_service
         self._workbench_version = workbench_version
         logger.debug("ReportService initialized")
+
+    @classmethod
+    def report_types_for_scope(cls, scope: str) -> Set[str]:
+        """
+        Report type strings valid for ``scan`` or ``project`` scope,
+        derived from ``REPORT_DEFS``.
+        """
+        if scope == "scan":
+            return {
+                rt
+                for rt, d in cls.REPORT_DEFS.items()
+                if "scan" in d["scopes"]
+            }
+        if scope == "project":
+            return {
+                rt
+                for rt, d in cls.REPORT_DEFS.items()
+                if "project" in d["scopes"]
+            }
+        raise ValidationError(
+            f"Invalid report scope '{scope}'. "
+            f"Expected 'scan' or 'project'."
+        )
 
     # ===== VERSION HELPERS =====
 
@@ -278,6 +167,74 @@ class ReportService:
                 f"Expected 'scan' or 'project'."
             )
 
+    def resolve_report_types(
+        self,
+        scope: str,
+        report_type_param: str,
+        *,
+        server_version: Optional[str] = None,
+    ) -> Set[str]:
+        """
+        Resolve CLI-style report type input for a scope.
+
+        ``ALL`` expands to all types valid for the scope, dropping types
+        not supported by the connected Workbench version (with warnings).
+        Comma-separated values are validated and returned as a set.
+
+        Args:
+            scope: ``scan`` or ``project``
+            report_type_param: ``ALL`` or comma-separated report types
+            server_version: Version string for log messages (defaults to
+                ``self._workbench_version``)
+
+        Returns:
+            Set of report type strings to generate/download
+
+        Raises:
+            ValidationError: If scope is invalid or an explicit type fails
+                validation
+        """
+        sv = (
+            server_version
+            if server_version is not None
+            else self._workbench_version
+        )
+        display_version = sv if sv else "unknown"
+
+        # Validates scope and returns types allowed for that scope
+        full_set = self.report_types_for_scope(scope)
+
+        raw = report_type_param.strip()
+        if raw.upper() == "ALL":
+            skipped = {
+                rt for rt in full_set if not self.is_report_type_supported(rt)
+            }
+            for rt in sorted(skipped):
+                min_v = self.MIN_VERSION_FOR_REPORT_TYPES.get(rt, "?")
+                logger.warning(
+                    f"Skipping '{rt}' from ALL: requires Workbench >= {min_v}, "
+                    f"server is {display_version}"
+                )
+            return full_set - skipped
+
+        requested = {
+            p.strip().lower() for p in raw.split(",") if p.strip()
+        }
+        for rt in requested:
+            self.validate_report_type(rt, scope)
+        return requested
+
+    def _report_capabilities(self, report_type: str) -> Dict[str, Any]:
+        """
+        Return the ``capabilities`` dict for ``report_type``, or empty dict
+        if unknown (API validates unknown types).
+        """
+        d = self.REPORT_DEFS.get(report_type)
+        if not d:
+            return {}
+        caps = d.get("capabilities")
+        return caps if isinstance(caps, dict) else {}
+
     # ===== VALIDATION METHODS =====
 
     def _validate_report_parameters(
@@ -306,7 +263,7 @@ class ReportService:
             include_dep_det_info: Detailed dependency info flag
             report_content_type: Excel report content type
         """
-        capabilities = self.REPORT_TYPE_CAPABILITIES.get(report_type)
+        capabilities = self._report_capabilities(report_type)
         if not capabilities:
             # Unknown report type - let the API validate it
             logger.debug(
@@ -377,11 +334,12 @@ class ReportService:
         Raises:
             ValidationError: If report type is not supported for projects
         """
-        if report_type not in self.PROJECT_REPORT_TYPES:
+        allowed = self.report_types_for_scope("project")
+        if report_type not in allowed:
             raise ValidationError(
                 f"Report type '{report_type}' is not supported for "
                 f"project reports. Valid types: "
-                f"{', '.join(sorted(self.PROJECT_REPORT_TYPES))}"
+                f"{', '.join(sorted(allowed))}"
             )
         self._ensure_report_version_supported(report_type)
 
@@ -395,17 +353,19 @@ class ReportService:
         Raises:
             ValidationError: If report type is not supported for scans
         """
-        if report_type not in self.SCAN_REPORT_TYPES:
+        allowed = self.report_types_for_scope("scan")
+        if report_type not in allowed:
             raise ValidationError(
                 f"Report type '{report_type}' is not supported for "
                 f"scan reports. Valid types: "
-                f"{', '.join(sorted(self.SCAN_REPORT_TYPES))}"
+                f"{', '.join(sorted(allowed))}"
             )
         self._ensure_report_version_supported(report_type)
 
     def is_async_report_type(self, report_type: str) -> bool:
         """
-        Determine if report type requires async generation.
+        Whether this report type uses async generation (same for scan and
+        project scopes).
 
         Args:
             report_type: Report type to check
@@ -413,7 +373,148 @@ class ReportService:
         Returns:
             bool: True if report type is async, False otherwise
         """
-        return report_type in self.ASYNC_REPORT_TYPES
+        d = self.REPORT_DEFS.get(report_type)
+        if d is None:
+            return report_type in self.ASYNC_REPORT_TYPES
+        return bool(d["is_async"])
+
+    def _apply_common_report_payload_fields(
+        self,
+        payload_data: Dict[str, Any],
+        report_type: str,
+        capabilities: Dict[str, Any],
+        *,
+        selection_type: Optional[str] = None,
+        selection_view: Optional[str] = None,
+        disclaimer: Optional[str] = None,
+        include_vex: bool = True,
+        include_dep_det_info: bool = False,
+        report_content_type: Optional[str] = None,
+    ) -> None:
+        """Mutates ``payload_data`` with optional fields when supported."""
+        if selection_type and capabilities.get("supports_selection_type"):
+            payload_data["selection_type"] = selection_type
+        if selection_view and capabilities.get("supports_selection_view"):
+            payload_data["selection_view"] = selection_view
+        if disclaimer and capabilities.get("supports_disclaimer"):
+            payload_data["disclaimer"] = disclaimer
+
+        if report_content_type and capabilities.get(
+            "supports_report_content_type"
+        ):
+            payload_data["report_content_type"] = report_content_type
+
+        if capabilities.get("supports_vex"):
+            if self._is_field_supported("include_vex"):
+                payload_data["include_vex"] = include_vex
+            else:
+                logger.warning(
+                    f"include_vex requires Workbench >= "
+                    f"{self.MIN_VERSION_FOR_FIELDS['include_vex']}; "
+                    f"field omitted (server: {self._workbench_version})"
+                )
+
+        if include_dep_det_info and capabilities.get(
+            "supports_dep_det_info"
+        ):
+            if self._is_field_supported("include_dep_det_info"):
+                payload_data["include_dep_det_info"] = include_dep_det_info
+            else:
+                logger.warning(
+                    f"include_dep_det_info requires Workbench >= "
+                    f"{self.MIN_VERSION_FOR_FIELDS['include_dep_det_info']}; "
+                    f"field omitted (server: {self._workbench_version})"
+                )
+
+    def _build_payload(
+        self,
+        scope: str,
+        resource_code: str,
+        report_type: str,
+        *,
+        selection_type: Optional[str] = None,
+        selection_view: Optional[str] = None,
+        disclaimer: Optional[str] = None,
+        include_vex: bool = True,
+        include_dep_det_info: bool = False,
+        report_content_type: Optional[str] = None,
+        async_mode: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """
+        Shared scan/project report payload builder.
+
+        Raises:
+            ValidationError: If scope or report type is invalid
+        """
+        if scope not in ("scan", "project"):
+            raise ValidationError(
+                f"Invalid report scope '{scope}'. "
+                f"Expected 'scan' or 'project'."
+            )
+
+        if scope == "project":
+            self.validate_project_report_type(report_type)
+        else:
+            self.validate_scan_report_type(report_type)
+
+        defs = self.REPORT_DEFS.get(report_type)
+        if defs is not None and scope not in defs["scopes"]:
+            raise ValidationError(
+                f"Report type '{report_type}' is not supported for "
+                f"{scope} scope."
+            )
+
+        self._validate_report_parameters(
+            report_type=report_type,
+            selection_type=selection_type,
+            selection_view=selection_view,
+            disclaimer=disclaimer,
+            include_vex=include_vex if include_vex is not True else None,
+            include_dep_det_info=include_dep_det_info,
+            report_content_type=report_content_type,
+        )
+
+        capabilities = self._report_capabilities(report_type)
+
+        if scope == "project":
+            logger.debug(
+                f"Building project report payload: "
+                f"project={resource_code}, type={report_type}"
+            )
+            payload_data: Dict[str, Any] = {
+                "project_code": resource_code,
+                "report_type": report_type,
+                "async": "1",
+            }
+        else:
+            logger.debug(
+                f"Building scan report payload: "
+                f"scan={resource_code}, type={report_type}"
+            )
+            if async_mode is None:
+                use_async = self.is_async_report_type(report_type)
+            else:
+                use_async = async_mode
+            async_value = "1" if use_async else "0"
+            payload_data = {
+                "scan_code": resource_code,
+                "report_type": report_type,
+                "async": async_value,
+            }
+
+        self._apply_common_report_payload_fields(
+            payload_data,
+            report_type,
+            capabilities,
+            selection_type=selection_type,
+            selection_view=selection_view,
+            disclaimer=disclaimer,
+            include_vex=include_vex,
+            include_dep_det_info=include_dep_det_info,
+            report_content_type=report_content_type,
+        )
+
+        return payload_data
 
     # ===== PAYLOAD BUILDING METHODS =====
 
@@ -447,74 +548,17 @@ class ReportService:
         Raises:
             ValidationError: If report type is invalid
         """
-        # Validate report type
-        self.validate_project_report_type(report_type)
-
-        # Validate parameters against report type capabilities
-        self._validate_report_parameters(
-            report_type=report_type,
+        return self._build_payload(
+            "project",
+            project_code,
+            report_type,
             selection_type=selection_type,
             selection_view=selection_view,
             disclaimer=disclaimer,
-            include_vex=include_vex if include_vex is not True else None,
+            include_vex=include_vex,
             include_dep_det_info=include_dep_det_info,
             report_content_type=report_content_type,
         )
-
-        logger.debug(
-            f"Building project report payload: "
-            f"project={project_code}, type={report_type}"
-        )
-
-        # Build base payload
-        payload_data = {
-            "project_code": project_code,
-            "report_type": report_type,
-            "async": "1",  # Project reports are always async
-        }
-
-        # Get capabilities for this report type
-        capabilities = self.REPORT_TYPE_CAPABILITIES.get(report_type, {})
-
-        # Add optional filtering parameters (only if supported)
-        if selection_type and capabilities.get("supports_selection_type"):
-            payload_data["selection_type"] = selection_type
-        if selection_view and capabilities.get("supports_selection_view"):
-            payload_data["selection_view"] = selection_view
-        if disclaimer and capabilities.get("supports_disclaimer"):
-            payload_data["disclaimer"] = disclaimer
-
-        # Add Excel-specific parameters (only if supported)
-        if report_content_type and capabilities.get(
-            "supports_report_content_type"
-        ):
-            payload_data["report_content_type"] = report_content_type
-
-        # Add include_vex parameter if supported and server version allows
-        if capabilities.get("supports_vex"):
-            if self._is_field_supported("include_vex"):
-                payload_data["include_vex"] = include_vex
-            else:
-                logger.warning(
-                    f"include_vex requires Workbench >= "
-                    f"{self.MIN_VERSION_FOR_FIELDS['include_vex']}; "
-                    f"field omitted (server: {self._workbench_version})"
-                )
-
-        # include_dep_det_info: requested, capability, and version OK
-        if include_dep_det_info and capabilities.get(
-            "supports_dep_det_info"
-        ):
-            if self._is_field_supported("include_dep_det_info"):
-                payload_data["include_dep_det_info"] = include_dep_det_info
-            else:
-                logger.warning(
-                    f"include_dep_det_info requires Workbench >= "
-                    f"{self.MIN_VERSION_FOR_FIELDS['include_dep_det_info']}; "
-                    f"field omitted (server: {self._workbench_version})"
-                )
-
-        return payload_data
 
     def build_scan_report_payload(
         self,
@@ -548,82 +592,18 @@ class ReportService:
         Raises:
             ValidationError: If report type is invalid
         """
-        # Validate report type
-        self.validate_scan_report_type(report_type)
-
-        # Validate parameters against report type capabilities
-        self._validate_report_parameters(
-            report_type=report_type,
+        return self._build_payload(
+            "scan",
+            scan_code,
+            report_type,
             selection_type=selection_type,
             selection_view=selection_view,
             disclaimer=disclaimer,
-            include_vex=include_vex if include_vex is not True else None,
+            include_vex=include_vex,
             include_dep_det_info=include_dep_det_info,
             report_content_type=report_content_type,
+            async_mode=async_mode,
         )
-
-        logger.debug(
-            f"Building scan report payload: "
-            f"scan={scan_code}, type={report_type}"
-        )
-
-        # Determine async mode
-        if async_mode is None:
-            use_async = self.is_async_report_type(report_type)
-        else:
-            use_async = async_mode
-
-        async_value = "1" if use_async else "0"
-
-        # Build base payload
-        payload_data = {
-            "scan_code": scan_code,
-            "report_type": report_type,
-            "async": async_value,
-        }
-
-        # Get capabilities for this report type
-        capabilities = self.REPORT_TYPE_CAPABILITIES.get(report_type, {})
-
-        # Add optional filtering parameters (only if supported)
-        if selection_type and capabilities.get("supports_selection_type"):
-            payload_data["selection_type"] = selection_type
-        if selection_view and capabilities.get("supports_selection_view"):
-            payload_data["selection_view"] = selection_view
-        if disclaimer and capabilities.get("supports_disclaimer"):
-            payload_data["disclaimer"] = disclaimer
-
-        # Add report_content_type if supported (Excel/HTML)
-        if report_content_type and capabilities.get(
-            "supports_report_content_type"
-        ):
-            payload_data["report_content_type"] = report_content_type
-
-        # Add include_vex parameter if supported and server version allows
-        if capabilities.get("supports_vex"):
-            if self._is_field_supported("include_vex"):
-                payload_data["include_vex"] = include_vex
-            else:
-                logger.warning(
-                    f"include_vex requires Workbench >= "
-                    f"{self.MIN_VERSION_FOR_FIELDS['include_vex']}; "
-                    f"field omitted (server: {self._workbench_version})"
-                )
-
-        # include_dep_det_info: requested, capability, and version OK
-        if include_dep_det_info and capabilities.get(
-            "supports_dep_det_info"
-        ):
-            if self._is_field_supported("include_dep_det_info"):
-                payload_data["include_dep_det_info"] = include_dep_det_info
-            else:
-                logger.warning(
-                    f"include_dep_det_info requires Workbench >= "
-                    f"{self.MIN_VERSION_FOR_FIELDS['include_dep_det_info']}; "
-                    f"field omitted (server: {self._workbench_version})"
-                )
-
-        return payload_data
 
     # ===== REPORT GENERATION METHODS =====
 
@@ -716,6 +696,156 @@ class ReportService:
 
         # Delegate to the client's raw method
         return self._scans.generate_report(payload_data)
+
+    @staticmethod
+    def _filter_report_generation_options(
+        options: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Strip kwargs not accepted by payload builders / generate methods."""
+        allowed = {
+            "selection_type",
+            "selection_view",
+            "disclaimer",
+            "include_vex",
+            "include_dep_det_info",
+            "report_content_type",
+            "async_mode",
+        }
+        return {k: v for k, v in options.items() if k in allowed}
+
+    def run_and_download_report(
+        self,
+        scope: str,
+        report_type: str,
+        output_dir: str,
+        name_component: str,
+        *,
+        scan_code: Optional[str] = None,
+        project_code: Optional[str] = None,
+        wait_retry_count: int = 60,
+        wait_retry_interval: int = 3,
+        **report_options: Any,
+    ) -> str:
+        """
+        Generate one report, wait when needed, download, and save to disk.
+
+        Intended for SDK users; CLI handlers may call this per report type
+        while retaining outer orchestration (loops, summaries).
+
+        Notice extract types use the notice extract API (scan scope only).
+
+        Args:
+            scope: ``scan`` or ``project``
+            report_type: Report type string
+            output_dir: Directory for saved file
+            name_component: Filename fragment (e.g. scan or project name)
+            scan_code: Required when ``scope`` is ``scan``
+            project_code: Required when ``scope`` is ``project``
+            wait_retry_count: Max polls when waiting for async / notice jobs
+            wait_retry_interval: Seconds between polls when waiting
+            **report_options: Passed to generate (e.g. ``selection_type``,
+                ``include_vex``, ``async_mode``)
+
+        Returns:
+            Path to the saved file
+
+        Raises:
+            ValidationError: Invalid scope, codes, or report type
+            RuntimeError: If ``status_check_service`` is not configured but
+                waiting is required
+        """
+        if scope not in ("scan", "project"):
+            raise ValidationError(
+                f"Invalid report scope '{scope}'. "
+                f"Expected 'scan' or 'project'."
+            )
+        if scope == "scan" and not scan_code:
+            raise ValidationError(
+                "scan_code is required for scan-scoped reports."
+            )
+        if scope == "project" and not project_code:
+            raise ValidationError(
+                "project_code is required for project-scoped reports."
+            )
+
+        opts = self._filter_report_generation_options(dict(report_options))
+
+        if report_type in self.NOTICE_REPORT_TYPES:
+            if scope != "scan":
+                raise ValidationError(
+                    f"Report type '{report_type}' is only supported for "
+                    f"scan scope."
+                )
+            if self._status_check is None:
+                raise RuntimeError(
+                    "status_check_service is not configured on ReportService"
+                )
+            notice_api = self.NOTICE_REPORT_TYPE_MAP[report_type]
+            self.generate_notice_extract(scan_code, notice_api)
+            self.check_notice_extract_status(
+                scan_code,
+                notice_api,
+                wait=True,
+                wait_retry_count=wait_retry_count,
+                wait_retry_interval=wait_retry_interval,
+            )
+            response = self.download_notice_extract(scan_code, notice_api)
+            return self.save_report(
+                response,
+                output_dir,
+                name_component,
+                report_type,
+                scope=scope,
+            )
+
+        is_async = self.is_async_report_type(report_type)
+
+        if is_async:
+            if self._status_check is None:
+                raise RuntimeError(
+                    "status_check_service is not configured on ReportService"
+                )
+            if scope == "project":
+                process_id = self.generate_project_report(
+                    project_code, report_type, **opts
+                )
+                self.check_project_report_status(
+                    process_id=process_id,
+                    project_code=project_code,
+                    wait=True,
+                    wait_retry_count=wait_retry_count,
+                    wait_retry_interval=wait_retry_interval,
+                )
+                response = self.download_project_report(process_id)
+            else:
+                process_id = self.generate_scan_report(
+                    scan_code, report_type, **opts
+                )
+                self.check_scan_report_status(
+                    scan_code=scan_code,
+                    process_id=process_id,
+                    wait=True,
+                    wait_retry_count=wait_retry_count,
+                    wait_retry_interval=wait_retry_interval,
+                )
+                response = self.download_scan_report(process_id)
+        else:
+            if scope == "project":
+                response = self.generate_project_report(
+                    project_code, report_type, **opts
+                )
+            else:
+                response = self.generate_scan_report(
+                    scan_code, report_type, **opts
+                )
+
+        return self.save_report(
+            response,
+            output_dir,
+            name_component,
+            report_type,
+            scope=scope,
+        )
 
     # ===== REPORT DOWNLOAD AND SAVE METHODS =====
 
