@@ -187,8 +187,7 @@ class TestScanGitIntegration:
         """
         Test scan-git command with invalid git URL (should fail).
         """
-        # Unified interface now: download_content_from_git raises the error
-        mock_workbench_api.scans.download_content_from_git.side_effect = (
+        mock_workbench_api.scan_content.download_git_and_wait.side_effect = (
             ProcessError("Git clone failed: Repository not found")
         )
 

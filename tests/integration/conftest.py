@@ -416,6 +416,9 @@ def mock_workbench_api(mocker):
     )  # Empty list for scan lookup
     mock_client.scans.create.return_value = {"scan_id": 12345}
 
+    mock_client.quick_scan = MagicMock()
+    mock_client.quick_scan.scan_one_file.return_value = []
+
     # --- Mock Projects Client ---
     mock_client.projects = MagicMock()
     mock_client.projects.list.return_value = (
@@ -452,6 +455,27 @@ def mock_workbench_api(mocker):
         is_finished=True,
         raw_data={"status": "FINISHED", "is_finished": "1"},
     )
+
+    # --- Mock Scan Content Service ---
+    mock_client.scan_content = MagicMock()
+    _git_clone_done = StatusResult(
+        status="FINISHED",
+        is_finished=True,
+        raw_data={"status": "FINISHED", "is_finished": "1"},
+        duration=2.0,
+        success=True,
+    )
+    mock_client.scan_content.check_git_clone_status.return_value = (
+        _git_clone_done
+    )
+    mock_client.scan_content.download_git_and_wait.return_value = (
+        _git_clone_done
+    )
+    mock_client.scan_content.download_content_from_git.return_value = True
+    mock_client.scan_content.remove_uploaded_content.return_value = True
+
+    mock_client.quick_scan_service = MagicMock()
+    mock_client.quick_scan_service.scan_one_file.return_value = []
 
     # --- Mock Waiting Service (deprecated, uses StatusResult now) ---
     mock_client.waiting = MagicMock()
@@ -501,6 +525,11 @@ def mock_workbench_api(mocker):
         "vulnerabilities": [],
     }
     mock_client.results.links = MagicMock()
+    mock_client.results.get_pending_files.return_value = {}
+    mock_client.results.get_policy_warnings.return_value = {
+        "policy_warnings_total": 0
+    }
+    mock_client.results.get_vulnerabilities.return_value = []
 
     # --- Mock Reports Service ---
     mock_client.reports = MagicMock()

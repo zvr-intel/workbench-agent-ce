@@ -78,14 +78,10 @@ def handle_scan_git(
     print("Starting Git Clone...")
 
     try:
-        client.scans.download_content_from_git(scan_code)
-        git_clone_result = (
-            client.status_check.check_git_clone_status(
-                scan_code,
-                wait=True,
-                wait_retry_count=params.scan_number_of_tries,
-                wait_retry_interval=3,
-            )
+        git_clone_result = client.scan_content.download_git_and_wait(
+            scan_code,
+            wait_retry_count=params.scan_number_of_tries,
+            wait_retry_interval=3,
         )
         durations["git_clone"] = git_clone_result.duration or 0.0
         print("Git Clone Completed.")
@@ -103,7 +99,7 @@ def handle_scan_git(
     # ===== STEP 4: Remove .git Directory =====
     print("\nRemoving .git directory to optimize scan...")
     try:
-        if client.scans.remove_uploaded_content(
+        if client.scan_content.remove_uploaded_content(
             scan_code, ".git/"
         ):
             print("Successfully removed .git directory.")

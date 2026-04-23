@@ -116,7 +116,7 @@ def _check_pending_files_gate(
     count = 0
 
     try:
-        pending_files = client.scans.get_pending_files(scan_code)
+        pending_files = client.results.get_pending_files(scan_code)
         count = len(pending_files)
     except (ApiError, NetworkError) as e:
         print(f"\n⚠️ Warning: Failed to check for pending files: {e}")
@@ -186,7 +186,7 @@ def _check_policy_warnings_gate(
     print("\nChecking for license policy warnings...")
 
     try:
-        policy_data = client.scans.get_policy_warnings_counter(scan_code)
+        policy_data = client.results.get_policy_warnings(scan_code)
         count = _extract_policy_count(policy_data)
 
         if count > 0:
@@ -253,9 +253,7 @@ def _check_vulnerabilities_gate(
     print("\nChecking for vulnerabilities...")
 
     try:
-        vulnerabilities = client.vulnerabilities.list_vulnerabilities(
-            scan_code
-        )
+        vulnerabilities = client.results.get_vulnerabilities(scan_code)
 
         # Count vulnerabilities by severity
         vuln_counts = {

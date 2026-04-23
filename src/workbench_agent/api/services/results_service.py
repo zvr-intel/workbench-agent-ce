@@ -494,6 +494,26 @@ class ResultsService:
         logger.debug("Retrieved scan metrics")
         return metrics
 
+    def get_pending_files(self, scan_code: str) -> Dict[str, Any]:
+        """
+        Get files pending identification for a scan.
+
+        Args:
+            scan_code: Code of the scan to fetch pending files from
+
+        Returns:
+            Mapping of file paths or keys to pending-file metadata (API shape).
+
+        Raises:
+            ApiError: If there are API issues
+            NetworkError: If there are network issues
+            ScanNotFoundError: If the scan doesn't exist
+        """
+        logger.debug(f"Fetching pending files for scan '{scan_code}'")
+        pending: Dict[str, Any] = self._scans.get_pending_files(scan_code)
+        logger.debug(f"Retrieved {len(pending)} pending files")
+        return pending
+
     def get_policy_warnings(self, scan_code: str) -> Dict[str, Any]:
         """
         Get policy warnings counter for a scan.

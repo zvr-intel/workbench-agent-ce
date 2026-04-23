@@ -31,6 +31,8 @@ def mock_client():
         False,
     )
     client.scan_operations.start_archive_extraction.return_value = False
+    client.scan_content = MagicMock()
+    client.scan_content.remove_uploaded_content.return_value = True
     return client
 
 
@@ -48,7 +50,7 @@ class TestScanHandlerClearBehavior:
         """Default behavior: existing scan content is cleared before upload."""
         handle_scan(mock_client, base_params)
 
-        mock_client.scans.remove_uploaded_content.assert_called_once_with(
+        mock_client.scan_content.remove_uploaded_content.assert_called_once_with(
             "scan_code", ""
         )
 
@@ -65,7 +67,7 @@ class TestScanHandlerClearBehavior:
 
         handle_scan(mock_client, base_params)
 
-        mock_client.scans.remove_uploaded_content.assert_not_called()
+        mock_client.scan_content.remove_uploaded_content.assert_not_called()
 
     @patch(
         "workbench_agent.handlers.scan.execute_scan_workflow",
@@ -109,7 +111,7 @@ class TestScanHandlerClearBehavior:
 
         handle_scan(mock_client, base_params)
 
-        mock_client.scans.remove_uploaded_content.assert_not_called()
+        mock_client.scan_content.remove_uploaded_content.assert_not_called()
 
     @patch(
         "workbench_agent.handlers.scan.execute_scan_workflow",
@@ -128,4 +130,4 @@ class TestScanHandlerClearBehavior:
 
         handle_scan(mock_client, base_params)
 
-        mock_client.scans.remove_uploaded_content.assert_not_called()
+        mock_client.scan_content.remove_uploaded_content.assert_not_called()
