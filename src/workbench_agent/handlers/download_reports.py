@@ -138,9 +138,8 @@ def handle_download_reports(
                 gen_kwargs["disclaimer"] = params.disclaimer
             gen_kwargs["include_vex"] = params.include_vex
 
-            # Match ``run_and_download_report``: notices poll (not ``is_async``);
-            # async types poll for queue completion. Use ``report_definitions``
-            # so messaging stays correct when ``client.reports`` is a mock.
+            # notices poll (not async)
+            # async types poll for queue completion.
             needs_wait = (
                 report_type in report_definitions.NOTICE_REPORT_TYPES
                 or report_type in report_definitions.ASYNC_REPORT_TYPES

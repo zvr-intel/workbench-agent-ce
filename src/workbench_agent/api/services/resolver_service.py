@@ -192,12 +192,11 @@ class ResolverService:
         fallback after a project-scoped miss.
         """
         logger.debug(
-            f"Looking up scan '{scan_name}' globally "
-            f"(using heavy scans->list_scans)..."
+            f"Looking up scan '{scan_name}' globally..."
         )
         logger.warning(
-            "Global scan search is memory intensive; "
-            "prefer resolving within a known project when possible."
+            "The Reuse source scan was not found in the current project. "
+            "Attempting global search; this may take a while."
         )
         all_scans = self.scans.list_scans()
         scan = next(
@@ -773,14 +772,10 @@ class ResolverService:
         Handle ID reuse resolution failure with consistent messaging.
 
         Logs warning and prints user-friendly message. Does NOT raise
-        exception - allows scan to continue without ID reuse
-        (graceful degradation).
+        exception - allows scan to continue without ID reuse.
         """
         logger.warning(
-            f"ID reuse validation failed: {reuse_type} '{name}' - "
-            f"{type(error).__name__}: {error}. Continuing without ID reuse."
-        )
-        print(
-            f"⚠️  Warning: ID reuse {reuse_type} '{name}' not found. "
-            "Continuing scan without ID reuse."
+            f"Could not find ID Reuse source: {reuse_type} '{name}' - "
+            f"{type(error).__name__}: {error}. "
+            "\nContinuing without ID reuse."
         )
