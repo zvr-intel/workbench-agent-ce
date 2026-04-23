@@ -501,6 +501,11 @@ def mock_workbench_api(mocker):
         "vulnerabilities": [],
     }
     mock_client.results.links = MagicMock()
+    mock_client.results.get_pending_files.return_value = {}
+    mock_client.results.get_policy_warnings.return_value = {
+        "policy_warnings_total": 0
+    }
+    mock_client.results.get_vulnerabilities.return_value = []
 
     # --- Mock Reports Service ---
     mock_client.reports = MagicMock()
