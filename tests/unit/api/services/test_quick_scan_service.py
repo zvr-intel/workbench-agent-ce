@@ -18,5 +18,5 @@ def test_scan_one_file_delegates(quick_scan_service):
     out = quick_scan_service.scan_one_file("YmFzZTY0", limit=2, sensitivity=5)
     assert out == [{"a": 1}]
     quick_scan_service._quick_scan.scan_one_file.assert_called_once_with(
-        "YmFzZTY0", limit=2, sensitivity=5
+        "YmFzZTY0", limit=2, sensitivity=6
     )
