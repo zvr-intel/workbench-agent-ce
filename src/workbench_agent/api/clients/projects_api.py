@@ -227,9 +227,9 @@ class ProjectsClient:
         """
         Create a new project in Workbench.
 
-        This method directly wraps the API's create action. For "find or create"
-        patterns, prefer using ResolverService.resolve_project_and_scan() or
-        ResolverService.find_project().
+        This method wraps the API's create action. For "find or create"
+        patterns, use ResolverService.find_or_create_project_and_scan()
+        or ResolverService.find_project().
 
         Args:
             project_name: Name of the project to create

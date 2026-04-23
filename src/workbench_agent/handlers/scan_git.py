@@ -60,7 +60,7 @@ def handle_scan_git(
     print("\n--- Project and Scan Checks ---")
     print("Checking target Project and Scan...")
     _, scan_code, scan_is_new = (
-        client.resolver.resolve_project_and_scan(
+        client.resolver.find_or_create_project_and_scan(
             project_name=params.project_name,
             scan_name=params.scan_name,
             params=params,

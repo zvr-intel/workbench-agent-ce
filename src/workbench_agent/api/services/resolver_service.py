@@ -4,10 +4,10 @@ ResolverService - Resolves project and scan names to codes.
 This service provides logic for finding or creating
 projects and scans based on user-provided names.
 
-The service provides both:
-- Low-level explicit methods (find_*, create_*) for precise control
-- High-level convenience methods (resolve_*) for "find or create" pattern
-- ID reuse resolution (resolving ID reuse source names to codes)
+The service provides:
+- Read-only lookups by name (``find_project``, ``find_project_and_scan``)
+- ``find_or_create_project_and_scan`` for find-or-create workflows
+- ``resolve_id_reuse`` for identification reuse name→code resolution
 """
 
 import argparse
@@ -35,22 +35,22 @@ class ResolverService:
 
     Public API:
 
-    **Find only (raises if not found):**
+    **Read-only (raises if not found):**
         >>> resolver.find_project("MyProject")
-        >>> resolver.find_scan("MyScan", "MyProject")
+        >>> pc, sc, sid = resolver.find_project_and_scan("MyProject", "MyScan")
 
-    **Resolve (find or create both project and scan):**
+    **Find or create (may create project and/or scan):**
         >>> project_code, scan_code, is_new = (
-        ...     resolver.resolve_project_and_scan(
+        ...     resolver.find_or_create_project_and_scan(
         ...         "MyProject", "MyScan", params
         ...     )
         ... )
 
     Usage Guidelines:
-    - Use find_* for read-only operations
-      (show-results, evaluate-gates, download-reports)
-    - Use resolve_project_and_scan() for operations that may create
+    - Use ``find_project`` / ``find_project_and_scan`` for read-only flows
+    - Use ``find_or_create_project_and_scan()`` when creation is allowed
       (scan, scan-git, blind-scan, import-sbom, import-da)
+    - Use ``resolve_id_reuse()`` for ID reuse parameters
     """
 
     def __init__(self, projects_client, scans_client):
@@ -65,30 +65,60 @@ class ResolverService:
         self.scans = scans_client
         logger.debug("ResolverService initialized")
 
-    # ===== PUBLIC API =====
+    # ===== PUBLIC API (read-only by name) =====
 
     def find_project(self, project_name: str) -> str:
         """
-        Find a project by name. Raises if not found.
+        Resolve a project code from its name (read-only).
 
-        Use this when you need to ensure a project exists without
-        creating it. Good for read-only operations like show-results,
-        evaluate-gates.
+        Use when you only need the project code, for example
+        to download project reports or reuse project identifications.
 
         Args:
-            project_name: Name of the project to find
+            project_name: Human-readable project name
 
         Returns:
-            str: Project code
+            Project code string
 
         Raises:
             ProjectNotFoundError: If project not found
             ApiError: If there are API issues
-
-        Example:
-            >>> # For read-only operations - explicit intent
-            >>> project_code = resolver.find_project("MyProject")
         """
+        return self._find_project(project_name)
+
+    def find_project_and_scan(
+        self, project_name: str, scan_name: str
+    ) -> Tuple[str, str, int]:
+        """
+        Resolve project and scan names to codes in one pass.
+
+        Uses ``_find_project`` and ``_find_scan_in_project`` to resolve the
+        project and scan codes.
+
+        Args:
+            project_name: Human-readable project name
+            scan_name: Human-readable scan name within that project
+
+        Returns:
+            Tuple of ``(project_code, scan_code, scan_id)``
+
+        Raises:
+            ProjectNotFoundError: If the project does not exist
+            ScanNotFoundError: If the scan does not exist in that project
+            ApiError: If there are API issues
+        """
+        project_code = self._find_project(project_name)
+        scan_code, scan_id = self._find_scan_in_project(
+            scan_name,
+            project_name=project_name,
+            project_code=project_code,
+        )
+        return project_code, scan_code, scan_id
+
+    # ===== PRIVATE LOOKUP HELPERS =====
+
+    def _find_project(self, project_name: str) -> str:
+        """Resolve project name to code; raises ``ProjectNotFoundError``."""
         logger.debug(f"Looking up project '{project_name}'...")
         projects = self.projects.list_projects()
         project = next(
@@ -106,126 +136,83 @@ class ResolverService:
 
         raise ProjectNotFoundError(f"Project '{project_name}' not found")
 
-    def find_scan(
+    def _find_scan_in_project(
         self,
         scan_name: str,
+        *,
         project_name: Optional[str] = None,
         project_code: Optional[str] = None,
     ) -> Tuple[str, int]:
         """
-        Find a scan by name. Raises if not found.
+        Find a scan by name within a project (read-only).
 
-        Performance-optimized: Prefers project-scoped search (efficient)
-        over global scan list (heavy operation).
-
-        Use this when you need to ensure a scan exists without
-        creating it. Good for read-only operations like show-results,
-        evaluate-gates.
-
-
-        Args:
-            scan_name: Name of the scan to find
-            project_name: Optional project name to search within.
-                         If provided, searches within that project only
-                         (uses efficient projects->get_all_scans).
-                         If None, searches globally using scans->list_scans
-                         (heavy operation - avoid if possible).
-            project_code: If set together with a project-scoped lookup,
-                         used directly so ``list_projects`` is not called.
-                         Pass this when the caller already resolved the
-                         project (e.g. after ``find_project``).
-
-        Returns:
-            Tuple[str, int]: (scan_code, scan_id)
-
-        Raises:
-            ScanNotFoundError: If scan not found
-            ProjectNotFoundError: If project_name specified but not found
-            ApiError: If there are API issues
-
-        Example:
-            >>> # Find scan in specific project (efficient - ALWAYS PREFERRED)
-            >>> scan_code, scan_id = resolver.find_scan(
-            ...     "MyScan", "MyProject"
-            ... )
-
-            >>> # Reuse project_code from find_project (skip list_projects)
-            >>> scan_code, scan_id = resolver.find_scan(
-            ...     "MyScan", project_name="MyProject", project_code=pc
-            ... )
-
-            >>> # Find scan globally (heavy - rarely needed)
-            >>> scan_code, scan_id = resolver.find_scan("MyScan")
+        Provide ``project_code`` to skip project lookup; otherwise
+        pass ``project_name`` to find the project code automatically.
         """
-        if project_name is not None or project_code is not None:
-            # Efficient path: Search within specific project
-            # Flow: project_name → [list_projects] → project_code →
-            #       [get_all_scans] → scan list
-            # Or: caller passes project_code → [get_all_scans] only
-            log_project = project_name or project_code or "?"
-            logger.debug(
-                f"Looking up scan '{scan_name}' "
-                f"in project '{log_project}'..."
+        if project_name is None and project_code is None:
+            raise ValueError(
+                "_find_scan_in_project requires project_name or project_code"
             )
 
-            # Step 1: Resolve project_name to project_code when needed
-            # When project_code is None here, outer condition implies
-            # project_name is not None (otherwise both would be None).
-            if project_code is None:
-                assert project_name is not None
-                project_code = self.find_project(project_name)
-            else:
-                logger.debug(
-                    f"Using provided project_code '{project_code}' "
-                    f"(skipping list_projects)"
-                )
+        log_project = project_name or project_code or "?"
+        logger.debug(
+            f"Looking up scan '{scan_name}' in project '{log_project}'..."
+        )
 
-            # Step 2: Get scans for this specific project
-            # This uses projects->get_all_scans (efficient, scoped)
-            scan_list = self.projects.get_all_scans(project_code)
-
-            # Step 3: Find exact scan match
-            scan = next(
-                (s for s in scan_list if s.get("name") == scan_name), None
-            )
-            if scan:
-                logger.debug(
-                    f"Found scan '{scan_name}' with code '{scan['code']}' "
-                    f"and ID {scan['id']} in project '{project_name}'"
-                )
-                return scan["code"], int(scan["id"])
-
-            # Scan not found in this project
-            raise ScanNotFoundError(
-                f"Scan '{scan_name}' not found in project "
-                f"'{project_name or project_code}'"
-            )
+        if project_code is None:
+            assert project_name is not None
+            project_code = self._find_project(project_name)
         else:
-            # Heavy path: Global search across all scans
-            # Uses scans->list_scans (memory intensive!)
-            # Rarely needed - most use cases should provide project_name
             logger.debug(
-                f"Looking up scan '{scan_name}' globally "
-                f"(using heavy scans->list_scans)..."
+                f"Using project_code '{project_code}' "
+                f"(skipping project lookup)"
             )
-            logger.warning(
-                "Global scan search is memory intensive! "
-                "Consider providing project_name if known."
-            )
-            all_scans = self.scans.list_scans()
-            scan = next(
-                (s for s in all_scans if s.get("name") == scan_name), None
-            )
-            if scan:
-                logger.debug(
-                    f"Found scan '{scan_name}' with code '{scan['code']}' "
-                    f"and ID {scan['id']} (global search)"
-                )
-                return scan["code"], int(scan["id"])
 
-            raise ScanNotFoundError(f"Scan '{scan_name}' not found")
+        scan_list = self.projects.get_all_scans(project_code)
+        scan = next(
+            (s for s in scan_list if s.get("name") == scan_name), None
+        )
+        if scan:
+            logger.debug(
+                f"Found scan '{scan_name}' with code '{scan['code']}' "
+                f"and ID {scan['id']} in project '{log_project}'"
+            )
+            return scan["code"], int(scan["id"])
 
-    def resolve_project_and_scan(
+        raise ScanNotFoundError(
+            f"Scan '{scan_name}' not found in project "
+            f"'{project_name or project_code}'"
+        )
+
+    def _find_scan_globally(self, scan_name: str) -> Tuple[str, int]:
+        """
+        Resolve a scan by name across all projects (read-only, heavy).
+
+        Used internally when resolving by scan name alone, e.g. ID reuse
+        fallback after a project-scoped miss.
+        """
+        logger.debug(
+            f"Looking up scan '{scan_name}' globally "
+            f"(using heavy scans->list_scans)..."
+        )
+        logger.warning(
+            "Global scan search is memory intensive; "
+            "prefer resolving within a known project when possible."
+        )
+        all_scans = self.scans.list_scans()
+        scan = next(
+            (s for s in all_scans if s.get("name") == scan_name), None
+        )
+        if scan:
+            logger.debug(
+                f"Found scan '{scan_name}' with code '{scan['code']}' "
+                f"and ID {scan['id']} (global search)"
+            )
+            return scan["code"], int(scan["id"])
+
+        raise ScanNotFoundError(f"Scan '{scan_name}' not found")
+
+    def find_or_create_project_and_scan(
         self,
         project_name: str,
         scan_name: str,
@@ -233,11 +220,10 @@ class ResolverService:
         import_from_report: bool = False,
     ) -> Tuple[str, str, bool]:
         """
-        Resolve project and scan (find or create both).
+        Find or create a project and scan by name.
 
-        This convenience method combines project and scan resolution in one
-        call and provides user-friendly feedback on what was created/found.
-        It also automatically validates scan compatibility for existing scans.
+        Combines project and scan resolution in one call, prints what was
+        created or found, and validates scan compatibility for existing scans.
 
         Args:
             project_name: Name of the project
@@ -254,7 +240,7 @@ class ResolverService:
 
         Example:
             >>> project_code, scan_code, scan_is_new = (
-            ...     resolver.resolve_project_and_scan(
+            ...     resolver.find_or_create_project_and_scan(
             ...         "MyProject", "MyScan", params
             ...     )
             ... )
@@ -267,7 +253,7 @@ class ResolverService:
         # Try to find project
         project_created = False
         try:
-            project_code = self.find_project(project_name)
+            project_code = self._find_project(project_name)
         except ProjectNotFoundError:
             project_code = self._create_project(project_name=project_name)
             project_created = True
@@ -275,8 +261,8 @@ class ResolverService:
         # Try to find scan
         scan_is_new = False
         try:
-            scan_code, _ = self.find_scan(
-                scan_name=scan_name,
+            scan_code, _ = self._find_scan_in_project(
+                scan_name,
                 project_name=project_name,
                 project_code=project_code,
             )
@@ -327,7 +313,7 @@ class ResolverService:
         """
         Internal: Create a new project.
 
-        This is a private method. Use resolve_project_and_scan() instead
+        This is a private method. Use find_or_create_project_and_scan()
         for the standard workflow.
 
         Args:
@@ -370,7 +356,8 @@ class ResolverService:
         """
         Internal: Create a new scan in a project.
 
-        This is a private method. Use resolve_project_and_scan() instead.
+        This is a private method. Use find_or_create_project_and_scan()
+        instead.
 
         Args:
             scan_name: Name for the new scan
@@ -713,7 +700,7 @@ class ResolverService:
         returns None rather than blocking the scan.
         """
         try:
-            project_code = self.find_project(project_name)
+            project_code = self._find_project(project_name)
             logger.info(
                 f"ID reuse: project '{project_name}' → '{project_code}'"
             )
@@ -733,7 +720,9 @@ class ResolverService:
         """
         Resolve scan reuse - warn and return None if fails.
 
-        Uses optimized resolution (tries current project first, then global).
+        Resolves by scan name within ``current_project_name`` first; if the
+        scan is not in that project, falls back to a global ``list_scans``
+        search (same pattern as other cross-project scan-by-name cases).
         Uses graceful degradation: if resolution fails, logs warning and
         returns None rather than blocking the scan.
         """
@@ -747,8 +736,9 @@ class ResolverService:
                     f"then global if needed)"
                 )
                 try:
-                    scan_code, _ = self.find_scan(
-                        scan_name, current_project_name
+                    scan_code, _ = self._find_scan_in_project(
+                        scan_name,
+                        project_name=current_project_name,
                     )
                     logger.info(
                         f"Found ID reuse source scan '{scan_name}' in current "
@@ -760,14 +750,14 @@ class ResolverService:
                         f"Scan '{scan_name}' not found in project "
                         f"'{current_project_name}', trying global search..."
                     )
-                    scan_code, _ = self.find_scan(scan_name, None)
+                    scan_code, _ = self._find_scan_globally(scan_name)
                     logger.info(
                         f"Found ID reuse source scan '{scan_name}' via global "
                         f"search (scan is in a different project)"
                     )
             else:
                 # No current project - try global search directly
-                scan_code, _ = self.find_scan(scan_name, None)
+                scan_code, _ = self._find_scan_globally(scan_name)
 
             logger.info(f"ID reuse: scan '{scan_name}' → '{scan_code}'")
             print(f"✓ Successfully validated ID reuse scan '{scan_name}'")

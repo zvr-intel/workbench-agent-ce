@@ -179,17 +179,17 @@ def _validate_da_results_file(path: str) -> None:
 
 def _validate_download_reports_command(args: Namespace) -> None:
     """Validate download-reports command."""
-    report_scope = getattr(args, "report_scope", None)
-    project_name = getattr(args, "project_name", None)
-    scan_name = getattr(args, "scan_name", None)
+    report_scope = getattr(args, "report_scope", None) or "scan"
+    project_name = (getattr(args, "project_name", None) or "").strip()
+    scan_name = (getattr(args, "scan_name", None) or "").strip()
 
-    if report_scope == "project" and not project_name:
+    if not project_name:
         raise ValidationError(
-            "Project name is required for project scope report"
+            "Please provide a project name (use --project-name)"
         )
     if report_scope == "scan" and not scan_name:
         raise ValidationError(
-            "Scan name is required for scan scope report"
+            "Scan scope reports require the scan name (use --scan-name)"
         )
 
 

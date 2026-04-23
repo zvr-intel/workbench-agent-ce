@@ -70,7 +70,7 @@ def mock_main_dependencies():
         mocks["workbench_instance"].resolver = MagicMock()
         mocks[
             "workbench_instance"
-        ].resolver.resolve_project_and_scan.return_value = (
+        ].resolver.find_or_create_project_and_scan.return_value = (
             "TEST_PROJECT_CODE",
             "TEST_SCAN_CODE",
             False,
@@ -78,7 +78,10 @@ def mock_main_dependencies():
         mocks["workbench_instance"].resolver.find_project.return_value = (
             "TEST_PROJECT_CODE"
         )
-        mocks["workbench_instance"].resolver.find_scan.return_value = (
+        mocks[
+            "workbench_instance"
+        ].resolver.find_project_and_scan.return_value = (
+            "TEST_PROJECT_CODE",
             "TEST_SCAN_CODE",
             123,
         )

@@ -120,6 +120,7 @@ class TestBasicCommandParsing:
         cmd_args = (
             args()
             .download_reports(scope="scan")
+            .project_name("TestProject")
             .scan_name("TestScan")
             .build()
         )
@@ -127,6 +128,7 @@ class TestBasicCommandParsing:
 
         assert parsed.command == "download-reports"
         assert parsed.report_scope == "scan"
+        assert parsed.project_name == "TestProject"
         assert parsed.scan_name == "TestScan"
         assert parsed.report_type == "ALL"  # Default
         assert parsed.report_save_path == "."  # Default

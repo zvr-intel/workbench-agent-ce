@@ -72,15 +72,15 @@ def handle_show_results(
     )
 
     # Use explicit resolver API (read-only)
-    project_code = client.resolver.find_project(params.project_name)
-    logger.debug(f"Found project: {project_code}")
-
-    scan_code, scan_id = client.resolver.find_scan(
-        params.scan_name,
-        params.project_name,
-        project_code=project_code,
+    project_code, scan_code, scan_id = (
+        client.resolver.find_project_and_scan(
+            params.project_name,
+            params.scan_name,
+        )
     )
-    logger.debug(f"Found scan: {scan_code} (ID: {scan_id})")
+    logger.debug(
+        f"Found project: {project_code}, scan: {scan_code} (ID: {scan_id})"
+    )
 
     # Ensure scan processes are idle before fetching results
     show_results_pre_flight_check(client, scan_code, params)

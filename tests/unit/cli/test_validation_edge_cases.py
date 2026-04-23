@@ -222,9 +222,11 @@ class TestValidationSpecialCases:
             api_url="https://test.com",
             api_user="test",
             api_token="token",
+            report_scope="project",
+            project_name="TestProject",
         )
 
-        # Should not raise for download-reports command
+        # Should not raise for download-reports with valid project scope args
         validate_parsed_args(args)
 
     def test_show_results_command_validation_coverage(self):

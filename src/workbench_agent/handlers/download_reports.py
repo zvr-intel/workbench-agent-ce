@@ -40,8 +40,10 @@ def handle_download_reports(
             - report_scope: "scan" or "project"
             - report_type: Comma-separated list or "ALL"
             - report_save_path: Output directory
-            - project_name: Project name (required for project scope)
-            - scan_name: Scan name (required for scan scope)
+            - project_name: Project name (required for project scope; required
+              for scan scope together with scan_name)
+            - scan_name: Scan name (required for scan scope together with
+              project_name)
 
     Returns:
         True if at least one report was successfully downloaded
@@ -66,7 +68,6 @@ def handle_download_reports(
         print(f"Creating output directory: {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
 
-    # Note: Project/scan name requirements are validated at CLI layer (cli/validators.py)
     # Resolve project, scan
     scope_name = (
         params.scan_name
@@ -82,26 +83,13 @@ def handle_download_reports(
     project_code = None
     scan_code = None
 
-    if params.project_name:
-        project_code = client.resolver.find_project(params.project_name)
-
     if params.report_scope == "scan":
-        # If scan scope, we need a scan code
-        if params.scan_name:
-            # Try to resolve using project context first if provided
-            if project_code and params.project_name:
-                scan_code, _ = client.resolver.find_scan(
-                    scan_name=params.scan_name,
-                    project_name=params.project_name,
-                    project_code=project_code,
-                )
-            else:
-                # Try to resolve globally if project not provided
-                scan_code, _ = client.resolver.find_scan(
-                    scan_name=params.scan_name,
-                    project_name=None,
-                )
-    # Note: project_code validation for project scope is done at CLI layer
+        project_code, scan_code, _ = client.resolver.find_project_and_scan(
+            params.project_name,
+            params.scan_name,
+        )
+    elif params.report_scope == "project":
+        project_code = client.resolver.find_project(params.project_name)
 
     # Check scan completion status for scan-scope reports
     if params.report_scope == "scan" and scan_code:
@@ -150,18 +138,16 @@ def handle_download_reports(
                 gen_kwargs["disclaimer"] = params.disclaimer
             gen_kwargs["include_vex"] = params.include_vex
 
-            # Match ``run_and_download_report``: notice extracts poll even though
-            # they are not ``is_async``; async types poll for queue completion.
-            # Use the registry (not ``client.reports``) so this stays correct
-            # when ``client.reports`` is a MagicMock.
+            # Match ``run_and_download_report``: notices poll (not ``is_async``);
+            # async types poll for queue completion. Use ``report_definitions``
+            # so messaging stays correct when ``client.reports`` is a mock.
             needs_wait = (
                 report_type in report_definitions.NOTICE_REPORT_TYPES
                 or report_type in report_definitions.ASYNC_REPORT_TYPES
             )
             if needs_wait:
                 print(
-                    f"Waiting for {report_type} report generation to "
-                    f"complete..."
+                    f"Waiting for {report_type} report to finish generating..."
                 )
 
             client.reports.run_and_download_report(

@@ -223,7 +223,7 @@ class TestDownloadReportsIntegration:
         # Mock resolver to raise ProjectNotFoundError
         from workbench_agent.api.exceptions import ProjectNotFoundError
 
-        mock_workbench_api.resolver.find_project.side_effect = (
+        mock_workbench_api.resolver.find_project_and_scan.side_effect = (
             ProjectNotFoundError("Project 'NonExistentProj' not found")
         )
 
@@ -274,7 +274,7 @@ class TestDownloadReportsIntegration:
         # Mock scan resolver to raise ScanNotFoundError
         from workbench_agent.api.exceptions import ScanNotFoundError
 
-        mock_workbench_api.resolver.find_scan.side_effect = (
+        mock_workbench_api.resolver.find_project_and_scan.side_effect = (
             ScanNotFoundError(
                 "Scan 'NonExistentScan' not found in project 'TestProj'"
             )

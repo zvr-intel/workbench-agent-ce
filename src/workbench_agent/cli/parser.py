@@ -374,12 +374,16 @@ Examples:
     )
     download_reports_parser.add_argument(
         "--project-name",
-        help="Name of the Project (required if --report-scope is 'project').",
+        help=(
+            "The Project to download reports from."
+        ),
         metavar="NAME",
     )
     download_reports_parser.add_argument(
         "--scan-name",
-        help="Scan Name to generate reports for (required if --report-scope is 'scan').",
+        help=(
+            "The Scan to download reports from. Required for scan reports."
+        ),
         metavar="NAME",
     )
     download_reports_parser.add_argument(

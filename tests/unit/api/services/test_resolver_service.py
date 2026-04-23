@@ -363,7 +363,7 @@ def test_resolve_id_reuse_project_success(
     resolver_service, mock_projects_client
 ):
     """Test successful project ID reuse resolution."""
-    # find_project uses list_projects and looks for project_name match
+    # _find_project uses list_projects and looks for project_name match
     mock_projects_client.list_projects.return_value = [
         {"project_name": "test_project", "project_code": "TEST_PROJECT"}
     ]
@@ -390,7 +390,7 @@ def test_resolve_id_reuse_scan_local_success(
     resolver_service, mock_projects_client, mock_scans_client
 ):
     """Test successful scan ID reuse resolution in current project."""
-    # find_scan uses find_project first, then get_all_scans
+    # _find_scan_in_project uses _find_project first, then get_all_scans
     mock_projects_client.list_projects.return_value = [
         {"project_name": "test_project", "project_code": "TEST_PROJECT"}
     ]
@@ -401,7 +401,7 @@ def test_resolve_id_reuse_scan_local_success(
         id_reuse_scan_name="test_scan", current_project_name="test_project"
     )
     assert result == ("specific_scan", "TEST_SCAN")
-    # Should call list_projects for find_project, then get_all_scans
+    # Should call list_projects for _find_project, then get_all_scans
     assert mock_projects_client.list_projects.called
     assert mock_projects_client.get_all_scans.called
 
@@ -489,8 +489,8 @@ def test_find_project_not_found(resolver_service, mock_projects_client):
         resolver_service.find_project("NonExistent")
 
 
-# --- Tests for find_scan (migrated from test_project_scan_resolvers) ---
-def test_find_scan_existing_in_project(
+# --- Tests for find_project_and_scan (migrated from test_project_scan_resolvers) ---
+def test_find_project_and_scan_existing(
     resolver_service, mock_projects_client, mock_scans_client
 ):
     """Test finding existing scan in specific project."""
@@ -502,16 +502,18 @@ def test_find_scan_existing_in_project(
         {"name": "OtherScan", "code": "SCAN789", "id": 101},
     ]
 
-    result_code, result_id = resolver_service.find_scan(
-        scan_name="TestScan", project_name="TestProject"
+    pc, result_code, result_id = resolver_service.find_project_and_scan(
+        "TestProject", "TestScan"
     )
 
+    assert pc == "PROJ123"
     assert result_code == "SCAN456"
     assert result_id == 789
+    mock_projects_client.list_projects.assert_called_once()
     mock_projects_client.get_all_scans.assert_called_once_with("PROJ123")
 
 
-def test_find_scan_not_found_in_project(
+def test_find_project_and_scan_not_found_in_project(
     resolver_service, mock_projects_client, mock_scans_client
 ):
     """Test finding non-existent scan in project raises error."""
@@ -526,35 +528,34 @@ def test_find_scan_not_found_in_project(
         ScanNotFoundError,
         match="Scan 'NonExistent' not found in project 'TestProject'",
     ):
-        resolver_service.find_scan(
-            scan_name="NonExistent", project_name="TestProject"
-        )
+        resolver_service.find_project_and_scan("TestProject", "NonExistent")
 
 
-def test_find_scan_with_project_code_skips_list_projects(
+def test_find_project_and_scan_single_list_projects(
     resolver_service, mock_projects_client, mock_scans_client
 ):
-    """When project_code is passed, list_projects is not called again."""
+    """Resolving project + scan lists projects only once."""
+    mock_projects_client.list_projects.return_value = [
+        {"project_name": "TestProject", "project_code": "PROJ123"}
+    ]
     mock_projects_client.get_all_scans.return_value = [
         {"name": "TestScan", "code": "SCAN456", "id": 789},
     ]
 
-    result_code, result_id = resolver_service.find_scan(
-        scan_name="TestScan",
-        project_name="TestProject",
-        project_code="PROJ123",
+    pc, result_code, result_id = resolver_service.find_project_and_scan(
+        "TestProject", "TestScan"
     )
 
+    assert pc == "PROJ123"
     assert result_code == "SCAN456"
     assert result_id == 789
-    mock_projects_client.list_projects.assert_not_called()
+    mock_projects_client.list_projects.assert_called_once()
     mock_projects_client.get_all_scans.assert_called_once_with("PROJ123")
 
 
-def test_find_scan_global_search_single_result(
-    resolver_service, mock_scans_client
-):
-    """Test global scan search with single result."""
+# --- Tests for _find_scan_globally (e.g. ID reuse fallback; not public API) ---
+def test_find_scan_globally_single_result(resolver_service, mock_scans_client):
+    """Global scan search with single result."""
     mock_scans_client.list_scans.return_value = [
         {
             "name": "GlobalScan",
@@ -564,8 +565,8 @@ def test_find_scan_global_search_single_result(
         }
     ]
 
-    result_code, result_id = resolver_service.find_scan(
-        scan_name="GlobalScan", project_name=None
+    result_code, result_id = resolver_service._find_scan_globally(
+        "GlobalScan"
     )
 
     assert result_code == "SCAN111"
@@ -573,11 +574,10 @@ def test_find_scan_global_search_single_result(
     mock_scans_client.list_scans.assert_called_once()
 
 
-def test_find_scan_global_search_multiple_results(
+def test_find_scan_globally_multiple_results(
     resolver_service, mock_scans_client
 ):
-    """Test global scan search with multiple results returns first match."""
-    # The implementation returns the first match, not an error
+    """Global scan search with multiple results returns first match."""
     mock_scans_client.list_scans.return_value = [
         {
             "name": "DupeScan",
@@ -593,28 +593,25 @@ def test_find_scan_global_search_multiple_results(
         },
     ]
 
-    result_code, result_id = resolver_service.find_scan(
-        scan_name="DupeScan", project_name=None
+    result_code, result_id = resolver_service._find_scan_globally(
+        "DupeScan"
     )
-    # Should return the first match
     assert result_code == "SCAN111"
     assert result_id == 222
 
 
-def test_find_scan_global_search_not_found(
-    resolver_service, mock_scans_client
-):
-    """Test global scan search with no results raises error."""
+def test_find_scan_globally_not_found(resolver_service, mock_scans_client):
+    """Global scan search with no results raises error."""
     mock_scans_client.list_scans.return_value = []
 
     with pytest.raises(
         ScanNotFoundError, match="Scan 'NotFound' not found"
     ):
-        resolver_service.find_scan(scan_name="NotFound", project_name=None)
+        resolver_service._find_scan_globally("NotFound")
 
 
-# --- Tests for resolve_project_and_scan (migrated from test_project_scan_resolvers) ---
-def test_resolve_project_and_scan_both_exist(
+# --- Tests for find_or_create_project_and_scan ---
+def test_find_or_create_project_and_scan_both_exist(
     resolver_service, mock_projects_client, mock_scans_client, mock_params
 ):
     """Test resolving when both project and scan exist."""
@@ -627,7 +624,7 @@ def test_resolve_project_and_scan_both_exist(
     mock_params.command = "scan"
 
     project_code, scan_code, scan_is_new = (
-        resolver_service.resolve_project_and_scan(
+        resolver_service.find_or_create_project_and_scan(
             "TestProject", "TestScan", mock_params
         )
     )
@@ -638,11 +635,11 @@ def test_resolve_project_and_scan_both_exist(
     mock_projects_client.list_projects.assert_called_once()
 
 
-def test_resolve_project_and_scan_create_project(
+def test_find_or_create_project_and_scan_create_project(
     resolver_service, mock_projects_client, mock_scans_client, mock_params
 ):
     """Test resolving when project doesn't exist."""
-    # find_project only: project missing; find_scan uses project_code (no 2nd list)
+    # _find_project fails then create; _find_scan_in_project uses new code
     mock_projects_client.list_projects.return_value = []
     mock_projects_client.create.return_value = "PROJ789"
     # Scan doesn't exist initially, then exists after creation
@@ -657,7 +654,7 @@ def test_resolve_project_and_scan_create_project(
 
     with patch("time.sleep"):  # Mock sleep
         project_code, scan_code, scan_is_new = (
-            resolver_service.resolve_project_and_scan(
+            resolver_service.find_or_create_project_and_scan(
                 "NewProject", "NewScan", mock_params
             )
         )
@@ -669,7 +666,7 @@ def test_resolve_project_and_scan_create_project(
     mock_scans_client.create.assert_called_once()
 
 
-def test_resolve_project_and_scan_create_scan(
+def test_find_or_create_project_and_scan_create_scan(
     resolver_service, mock_projects_client, mock_scans_client, mock_params
 ):
     """Test resolving when scan doesn't exist."""
@@ -687,7 +684,7 @@ def test_resolve_project_and_scan_create_scan(
 
     with patch("time.sleep"):  # Mock sleep
         project_code, scan_code, scan_is_new = (
-            resolver_service.resolve_project_and_scan(
+            resolver_service.find_or_create_project_and_scan(
                 "TestProject", "NewScan", mock_params
             )
         )

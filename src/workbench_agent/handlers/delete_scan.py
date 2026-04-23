@@ -44,9 +44,9 @@ def handle_delete_scan(
         params.scan_name,
         params.project_name,
     )
-    scan_code, _ = client.resolver.find_scan(
-        params.scan_name,
+    _, scan_code, _ = client.resolver.find_project_and_scan(
         params.project_name,
+        params.scan_name,
     )
     logger.debug("Resolved scan_code=%s", scan_code)
 
