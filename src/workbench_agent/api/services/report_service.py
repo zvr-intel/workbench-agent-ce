@@ -184,8 +184,9 @@ class ReportService:
         Args:
             scope: ``scan`` or ``project``
             report_type_param: ``ALL`` or comma-separated report types
-            server_version: Version string for log messages (defaults to
-                ``self._workbench_version``)
+            server_version: Optional override for log messages and gating
+                context (defaults to ``self._workbench_version`` set at init).
+                Handlers omit this; use for tests or special cases only.
 
         Returns:
             Set of report type strings to generate/download

@@ -58,7 +58,6 @@ def handle_download_reports(
     report_types = client.reports.resolve_report_types(
         params.report_scope,
         params.report_type,
-        server_version=client.get_workbench_version(),
     )
     logger.debug(f"Resolved report types to download: {report_types}")
 

@@ -80,7 +80,7 @@ def handle_scan(
     if not scan_is_new and not params.incremental_upload:
         print("\nClearing existing scan content...")
         try:
-            client.scans.remove_uploaded_content(scan_code, "")
+            client.scan_content.remove_uploaded_content(scan_code, "")
             print("Successfully cleared existing scan content.")
         except Exception as e:
             logger.warning(

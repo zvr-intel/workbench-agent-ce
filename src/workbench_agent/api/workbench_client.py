@@ -17,12 +17,13 @@ Usage:
     ...     api_token="token"
     ... )
     >>>
-    >>> # Use domain clients for direct API operations
-    >>> projects = workbench.projects.list_projects()
-    >>> scan_info = workbench.scans.get_information(scan_code)
+    >>> # Prefer services from handlers / application code
     >>> workbench.upload_service.upload_scan_target(
     ...     scan_code, "/path/to/source"
     ... )
+    >>> # Domain clients remain available for direct API access
+    >>> projects = workbench.projects.list_projects()
+    >>> scan_info = workbench.scans.get_information(scan_code)
     >>>
     >>> # Use services for high-level orchestration
     >>> p_code, s_code, is_new = (
@@ -56,9 +57,11 @@ from workbench_agent.api.clients import (
 from workbench_agent.api.exceptions import CompatibilityError
 from workbench_agent.api.helpers.base_api import BaseAPI
 from workbench_agent.api.services import (
+    QuickScanService,
     ReportService,
     ResolverService,
     ResultsService,
+    ScanContentService,
     ScanDeletionService,
     ScanOperationsService,
     StatusCheckService,
@@ -88,12 +91,14 @@ class WorkbenchClient:
     **Services (High-level orchestration):**
     - `resolver`: Resolve project/scan names to codes, create if needed
     - `status_check`: Check status of async operations (specialized methods)
+    - `scan_content`: Manages scan content on the Workbench Server
     - `reports`: Report generation with validation and waiting
     - `results`: Fetch and aggregate scan results
     - `scan_operations`: Scan execution with standardized behavior
     - `scan_deletion`: Queue scan delete and wait until complete
-    - `user_permissions`: Check API user Workbench permissions (e.g. delete scan)
-    - `upload_service`: File upload operations with business logic
+    - `user_permissions`: Check Workbench permissions for the API user
+    - `upload_service`: File upload operations
+    - `quick_scan_service`: Quick single-file scan
     - `waiting`: Convenient waiting methods for async operations
 
     Example:
@@ -195,6 +200,15 @@ class WorkbenchClient:
 
         self.status_check = StatusCheckService(
             scans_client=self.scans, projects_client=self.projects
+        )
+
+        self.scan_content = ScanContentService(
+            scans_client=self.scans,
+            status_check_service=self.status_check,
+        )
+
+        self.quick_scan_service = QuickScanService(
+            quick_scan_client=self.quick_scan
         )
 
         self.reports = ReportService(
