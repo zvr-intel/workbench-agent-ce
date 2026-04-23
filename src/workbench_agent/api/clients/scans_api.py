@@ -9,7 +9,9 @@ ScansClient - Handles all scan-related Workbench operations like:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+
+import requests
 
 from workbench_agent.api.exceptions import (
     ApiError,
@@ -1235,6 +1237,112 @@ class ScansClient:
                 f"scan '{scan_code}': {error_msg}",
                 details=response_data,
             )
+
+    # ===== NOTICE EXTRACT OPERATIONS =====
+
+    def notice_extract_run(
+        self,
+        scan_code: str,
+        extract_type: str = "NOTICE_EXTRACT_FILE",
+    ) -> bool:
+        """
+        Start notice file generation for a scan.
+
+        Wraps ``scans -> notice_extract_run``. Status polling uses
+        ``check_status`` with the matching ``NOTICE_EXTRACT_*`` type.
+
+        Args:
+            scan_code: Code of the scan
+            extract_type: One of NOTICE_EXTRACT_FILE, NOTICE_EXTRACT_COMPONENT,
+                NOTICE_EXTRACT_AGGREGATE
+
+        Returns:
+            True when the API reports success (data is truthy)
+
+        Raises:
+            ScanNotFoundError: If the scan does not exist
+            ApiError: If the API returns an error
+        """
+        logger.debug(
+            f"notice_extract_run for scan '{scan_code}' type={extract_type}"
+        )
+        payload = {
+            "group": "scans",
+            "action": "notice_extract_run",
+            "data": {
+                "scan_code": scan_code,
+                "type": extract_type,
+            },
+        }
+        response = self._api._send_request(payload)
+        if response.get("status") != "1":
+            error_msg = response.get("error", "Unknown API error")
+            if (
+                "Scan not found" in error_msg
+                or "row_not_found" in error_msg
+            ):
+                raise ScanNotFoundError(f"Scan '{scan_code}' not found")
+            raise ApiError(
+                f"Failed to start notice extract ({extract_type}) for "
+                f"scan '{scan_code}': {error_msg}",
+                details=response,
+            )
+        data = response.get("data")
+        if isinstance(data, bool):
+            return data
+        if data in (1, "1", "true", "True"):
+            return True
+        return bool(data)
+
+    def notice_extract_download(
+        self,
+        scan_code: str,
+        extract_type: str = "NOTICE_EXTRACT_FILE",
+    ) -> Union[requests.Response, str]:
+        """
+        Download generated notice file text for a scan.
+
+        Wraps ``scans -> notice_extract_download``. The server may return
+        raw text (non-JSON) or JSON with string data.
+
+        Returns:
+            ``requests.Response`` for streamed content, or a string body
+            when the API returns JSON-wrapped text.
+
+        Raises:
+            ScanNotFoundError: If the scan does not exist
+            ApiError: If the download fails
+        """
+        logger.debug(
+            f"notice_extract_download for scan '{scan_code}' "
+            f"type={extract_type}"
+        )
+        payload = {
+            "group": "scans",
+            "action": "notice_extract_download",
+            "data": {
+                "scan_code": scan_code,
+                "type": extract_type,
+            },
+        }
+        response_data = self._api._send_request(payload)
+        if "_raw_response" in response_data:
+            return response_data["_raw_response"]
+        if response_data.get("status") == "1":
+            data = response_data.get("data")
+            if isinstance(data, str):
+                return data
+        error_msg = response_data.get("error", "Unknown API error")
+        if (
+            "Scan not found" in error_msg
+            or "row_not_found" in error_msg
+        ):
+            raise ScanNotFoundError(f"Scan '{scan_code}' not found")
+        raise ApiError(
+            f"Failed to download notice extract ({extract_type}) for "
+            f"scan '{scan_code}': {error_msg}",
+            details=response_data,
+        )
 
     def import_report(self, scan_code: str):
         """

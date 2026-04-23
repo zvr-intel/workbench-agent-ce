@@ -36,8 +36,8 @@ def parse_cmdline_args():
         formatter_class=RawTextHelpFormatter,
         epilog="""
 Environment Variables:
-  WORKBENCH_URL    API Endpoint URL (e.g., https://workbench.example.com/api.php)
-  WORKBENCH_USER   Workbench Username  
+  WORKBENCH_URL    API URL (e.g., https://workbench.example/api.php)
+  WORKBENCH_USER   Workbench Username
   WORKBENCH_TOKEN  Workbench API Token
 
 For more information on a specific command, use:
@@ -56,7 +56,7 @@ For more information on a specific command, use:
     # Subparsers
     subparsers = parser.add_subparsers(
         dest="command",
-        help="Command to execute. Use '<COMMAND> --help' for command-specific help.",
+        help="Command to execute. Use '<COMMAND> --help' for command help.",
         required=True,
         metavar="COMMAND",
     )
@@ -110,8 +110,8 @@ Examples:
     # --- 'blind-scan' Subcommand ---
     blind_scan_parser = subparsers.add_parser(
         "blind-scan",
-        help="Run a blind scan using fossid-toolbox or a pre-generated .fossid file",
-        description="Generate hashes (or use a pre-generated .fossid file) and upload to Workbench for scanning.",
+        help="Run a blind scan with FossID Toolbox or a .fossid file",
+        description="Scan by hashing a directory and uploading to Workbench.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -126,19 +126,19 @@ Examples:
         epilog="""
 Examples:
   # Basic blind scan
-  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0-blind" \\
+  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0" \\
       --path ./src
 
   # Blind scan with dependency analysis
-  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0-blind" \\
+  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0" \\
       --path ./src --run-dependency-analysis
 
   # Blind scan with custom fossid-toolbox path
-  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0-blind" \\
+  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0" \\
       --path ./src --fossid-toolbox-path /usr/local/bin/fossid-toolbox
 
   # Blind scan with a pre-generated .fossid file (skips hashing)
-  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0-blind" \\
+  workbench-agent blind-scan --project-name "MyProject" --scan-name "v1.0.0" \\
       --path ./signatures.fossid
 """,
     )
@@ -167,7 +167,7 @@ Examples:
     import_da_parser = subparsers.add_parser(
         "import-da",
         help="Import dependency analysis results from ORT or FossID-DA",
-        description="Import an analyzer-result.json file produced by ORT Analyzer or FossID-DA.",
+        description="Import a analyzer-result.json from ORT or FossID-DA.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -178,7 +178,7 @@ Examples:
         epilog="""
 Examples:
   # Import analyzer-result.json from ORT
-  workbench-agent import-da --project-name "MyProject" --scan-name "imported-deps" \\
+  workbench-agent import-da --project-name "MyProject" --scan-name "v1.0.0" \\
       --path ./ort-output/analyzer-result.json
 """,
     )
@@ -194,7 +194,7 @@ Examples:
     import_sbom_parser = subparsers.add_parser(
         "import-sbom",
         help="Import an SBOM into Workbench.",
-        description="Import a Software Bill of Materials (SBOM). Supports CycloneDX JSON (v1.4-1.6) and SPDX (v2.0-2.3) in JSON, RDF, or XML formats.",
+        description="Import a CycloneDX 1.4-1.6 or SPDX 2.0-2.3 SBOM.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -205,27 +205,27 @@ Examples:
         epilog="""
 Examples:
   # Import CycloneDX SBOM
-  workbench-agent import-sbom --project-name "MyProject" --scan-name "sbom-import" \\
+  workbench-agent import-sbom --project-name "MyProject" --scan-name "v1.0" \\
       --path ./cyclonedx-bom.json
 
   # Import SPDX SBOM (RDF format)
-  workbench-agent import-sbom --project-name "MyProject" --scan-name "sbom-import" \\
+  workbench-agent import-sbom --project-name "MyProject" --scan-name "v1.0" \\
       --path ./spdx-document.rdf
 """,
     )
     import_sbom_parser.add_argument(
         "--path",
-        help="Path to the SBOM file to import (CycloneDX JSON or SPDX JSON/RDF/XML)",
+        help="Path to SBOM to import (CycloneDX JSON or SPDX JSON/RDF/XML)",
         type=str,
         required=True,
         metavar="PATH",
     )
 
     # --- 'show-results' Subcommand ---
-    show_results_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "show-results",
         help="Display results from an existing scan",
-        description="Fetch and display various results from a completed scan, including licenses, components, dependencies, vulnerabilities, and scan metrics. Results can be saved to a JSON file.",
+        description="Fetch scan results for display or saving to JSON.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -237,21 +237,14 @@ Examples:
         epilog="""
 Examples:
   # Show all available results
-  workbench-agent show-results --project-name "MyProject" --scan-name "v1.0.0" \\
-      --show-licenses --show-components --show-dependencies --show-vulnerabilities \\
-      --show-scan-metrics
-
-  # Show only licenses and components
-  workbench-agent show-results --project-name "MyProject" --scan-name "v1.0.0" \\
-      --show-licenses --show-components
+  workbench-agent show-results --project-name "MyProject" --scan-name "v1.0" \\
+      --show-licenses --show-components --show-dependencies \\
+      --show-scan-metrics --show-vulnerabilities --show-policy-warnings
 
   # Save results to JSON file
-  workbench-agent show-results --project-name "MyProject" --scan-name "v1.0.0" \\
+  workbench-agent show-results --project-name "MyProject" --scan-name "v1.0" \\
       --show-licenses --show-components --result-save-path ./results.json
 
-  # Show policy warnings
-  workbench-agent show-results --project-name "MyProject" --scan-name "v1.0.0" \\
-      --show-policy-warnings
 """,
     )
 
@@ -260,11 +253,10 @@ Examples:
         "delete-scan",
         help="Permanently delete a scan from Workbench",
         description=(
-            "Queue deletion of an existing scan (async background job) and wait "
-            "until it finishes. Requires permission to delete the scan (global "
-            "delete permission or scan owner). This cannot be undone. "
-            "Status polling uses a fixed 2 second interval; "
-            "--scan-wait-time does not apply to this command."
+            "Queue deletion of an existing scan (async job) and wait "
+            "until it finishes. Requires permission to delete scans (global "
+            "delete permission or scan owner). This is irreversible. "
+            "Status polling uses a fixed 2 second interval."
         ),
         formatter_class=RawTextHelpFormatter,
         parents=[
@@ -276,17 +268,17 @@ Examples:
         epilog="""
 Examples:
   # Delete a scan (default: keep identifications metadata behavior per API)
-  workbench-agent delete-scan --project-name "MyProject" --scan-name "v1.0.0"
+  workbench-agent delete-scan --project-name "MyProject" --scan-name "v1.0"
 
   # Delete scan and request identifications removal per API
-  workbench-agent delete-scan --project-name "MyProject" --scan-name "v1.0.0" \\
+  workbench-agent delete-scan --project-name "MyProject" --scan-name "v1.0" \\
       --delete-identifications
 """,
     )
     delete_scan_parser.add_argument(
         "--delete-identifications",
         help=(
-            "When set, pass delete_identifications=1 to the API (default: off)."
+            "When set, deletes identifications from this scan."
         ),
         action="store_true",
         default=False,
@@ -295,8 +287,8 @@ Examples:
     # --- 'evaluate-gates' Subcommand ---
     evaluate_gates_parser = subparsers.add_parser(
         "evaluate-gates",
-        help="Evaluate policy gates and scan status",
-        description="Check scan completion status, pending identifications, policy violations, and vulnerabilities. Use --fail-on-* options to control exit codes for CI/CD pipelines. Exits with code 0 if gates pass, 1 if they fail.",
+        help="Check a scan for Pending IDs, Policy warnings, or CVEs.",
+        description="Shows pass/fail by default; add --fail-on-* to fail hard.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -307,19 +299,19 @@ Examples:
         epilog="""
 Examples:
   # Fail on policy violations
-  workbench-agent evaluate-gates --project-name "MyProject" --scan-name "v1.0.0" \\
+  workbench-agent evaluate-gates --project-name "MyProj" --scan-name "v1.0" \\
       --fail-on-policy
 
   # Fail on pending identifications
-  workbench-agent evaluate-gates --project-name "MyProject" --scan-name "v1.0.0" \\
+  workbench-agent evaluate-gates --project-name "MyProj" --scan-name "v1.0" \\
       --fail-on-pending
 
   # Fail on critical or high severity vulnerabilities
-  workbench-agent evaluate-gates --project-name "MyProject" --scan-name "v1.0.0" \\
+  workbench-agent evaluate-gates --project-name "MyProj" --scan-name "v1.0" \\
       --fail-on-vuln-severity high
 
   # Multiple gate conditions
-  workbench-agent evaluate-gates --project-name "MyProject" --scan-name "v1.0.0" \\
+  workbench-agent evaluate-gates --project-name "MyProj" --scan-name "v1.0" \\
       --fail-on-policy --fail-on-pending --fail-on-vuln-severity critical
 """,
     )
@@ -332,7 +324,7 @@ Examples:
     )
     evaluate_gates_parser.add_argument(
         "--fail-on-pending",
-        help="Fail the gate if any files are found in the 'Pending Identification' state.",
+        help="Fail the gate if any files are found in the 'Pending ID' state.",
         action="store_true",
     )
     evaluate_gates_parser.add_argument(
@@ -344,8 +336,8 @@ Examples:
     # --- 'download-reports' Subcommand ---
     download_reports_parser = subparsers.add_parser(
         "download-reports",
-        help="Generate and download reports for a scan or project",
-        description="Generate and download reports for a completed scan or entire project. Supports multiple report formats including Excel, SPDX, CycloneDX, and more. Reports can be filtered by license type and identification view.",
+        help="Download reports for a scan or project",
+        description="Download reports with provided parameters.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -374,12 +366,16 @@ Examples:
     )
     download_reports_parser.add_argument(
         "--project-name",
-        help="Name of the Project (required if --report-scope is 'project').",
+        help=(
+            "The Project to download reports from."
+        ),
         metavar="NAME",
     )
     download_reports_parser.add_argument(
         "--scan-name",
-        help="Scan Name to generate reports for (required if --report-scope is 'scan').",
+        help=(
+            "The Scan to download reports from. Required for scan reports."
+        ),
         metavar="NAME",
     )
     download_reports_parser.add_argument(
@@ -436,10 +432,10 @@ Examples:
     )
 
     # --- 'scan-git' Subcommand ---
-    scan_git_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "scan-git",
         help="Clone and scan a Git repository",
-        description="Workbench clones a Git repository branch, tag, or commit to scan it.",
+        description="Scan a Git repository branch, tag, or commit.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],
@@ -478,7 +474,7 @@ Examples:
     quick_scan_parser = subparsers.add_parser(
         "quick-scan",
         help="Perform a quick scan of a single local file",
-        description="Quickly scan a single local file. Useful for quick checks of individual files.",
+        description="Quickly scan a single file. Useful to check one file.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],

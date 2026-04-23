@@ -9,6 +9,7 @@ import pytest
 import requests
 
 from workbench_agent.api.services.report_service import ReportService
+from workbench_agent.api.utils.process_waiter import StatusResult
 from workbench_agent.exceptions import FileSystemError, ValidationError
 
 
@@ -35,12 +36,25 @@ def mock_downloads_client(mocker):
 
 
 @pytest.fixture
+def mock_status_check(mocker):
+    """Create a mock StatusCheckService."""
+    return mocker.MagicMock()
+
+
+@pytest.fixture
 def report_service(
-    mock_projects_client, mock_scans_client, mock_downloads_client
+    mock_projects_client,
+    mock_scans_client,
+    mock_downloads_client,
+    mock_status_check,
 ):
     """Create a ReportService instance for testing."""
     return ReportService(
-        mock_projects_client, mock_scans_client, mock_downloads_client
+        mock_projects_client,
+        mock_scans_client,
+        mock_downloads_client,
+        status_check_service=mock_status_check,
+        workbench_version="25.1.0",
     )
 
 
@@ -58,15 +72,15 @@ class TestSaveReport:
         with patch("builtins.open", mock_open()) as mock_file:
             with patch("os.makedirs"):
                 result = report_service.save_report(
-                    response, "output_dir", "test_scan", "basic", "scan"
+                    response, "output_dir", "test_scan", "file-notices", "scan"
                 )
                 mock_file.assert_called_once_with(
-                    "output_dir/scan-test_scan-basic.txt",
+                    "output_dir/scan-test_scan-file-notices.txt",
                     "w",
                     encoding="utf-8",
                 )
                 mock_file().write.assert_called_once_with("Test content")
-                assert result == "output_dir/scan-test_scan-basic.txt"
+                assert result == "output_dir/scan-test_scan-file-notices.txt"
 
     def test_save_binary_response_success(self, report_service):
         """Test saving a binary response successfully."""
@@ -117,7 +131,7 @@ class TestSaveReport:
                 FileSystemError, match="Could not create output directory"
             ):
                 report_service.save_report(
-                    response, "output_dir", "test_scan", "basic", "scan"
+                    response, "output_dir", "test_scan", "file-notices", "scan"
                 )
 
     def test_file_write_error(self, report_service):
@@ -137,7 +151,7 @@ class TestSaveReport:
                         response,
                         "output_dir",
                         "test_scan",
-                        "basic",
+                        "file-notices",
                         "scan",
                     )
 
@@ -200,15 +214,15 @@ class TestSaveReport:
         with patch("builtins.open", mock_open()) as mock_file:
             with patch("os.makedirs"):
                 result = report_service.save_report(
-                    content, "output_dir", "test_scan", "basic", "scan"
+                    content, "output_dir", "test_scan", "file-notices", "scan"
                 )
                 mock_file.assert_called_once_with(
-                    "output_dir/scan-test_scan-basic.txt",
+                    "output_dir/scan-test_scan-file-notices.txt",
                     "w",
                     encoding="utf-8",
                 )
                 mock_file().write.assert_called_once_with(content)
-                assert result == "output_dir/scan-test_scan-basic.txt"
+                assert result == "output_dir/scan-test_scan-file-notices.txt"
 
     def test_save_bytes_success(self, report_service):
         """Test saving bytes successfully."""
@@ -248,7 +262,7 @@ class TestSaveReport:
             match="Failed to read content from response object",
         ):
             report_service.save_report(
-                response, "output_dir", "test_scan", "basic", "scan"
+                response, "output_dir", "test_scan", "file-notices", "scan"
             )
 
     def test_json_serialization_error(self, report_service):
@@ -279,17 +293,17 @@ class TestSaveReport:
                     response,
                     "output_dir",
                     "test/scan:name*",
-                    "basic",
+                    "file-notices",
                     "scan",
                 )
                 # Check that filename was sanitized
                 mock_file.assert_called_once_with(
-                    "output_dir/scan-test_scan_name_-basic.txt",
+                    "output_dir/scan-test_scan_name_-file-notices.txt",
                     "w",
                     encoding="utf-8",
                 )
                 assert (
-                    result == "output_dir/scan-test_scan_name_-basic.txt"
+                    result == "output_dir/scan-test_scan_name_-file-notices.txt"
                 )
 
     @pytest.mark.parametrize(
@@ -302,7 +316,8 @@ class TestSaveReport:
             ("html", "html"),
             ("dynamic_top_matched_components", "html"),
             ("string_match", "xlsx"),
-            ("basic", "txt"),
+            ("file-notices", "txt"),
+            ("aggregated-notices", "xlsx"),
             ("unknown_type", "txt"),  # Default case
         ],
     )
@@ -335,7 +350,7 @@ class TestSaveReport:
             ValidationError, match="Output directory is not specified"
         ):
             report_service.save_report(
-                response, "", "test_scan", "basic", "scan"
+                response, "", "test_scan", "file-notices", "scan"
             )
 
     def test_validation_error_no_name_component(self, report_service):
@@ -346,7 +361,7 @@ class TestSaveReport:
             ValidationError, match="Name component.*is not specified"
         ):
             report_service.save_report(
-                response, "output_dir", "", "basic", "scan"
+                response, "output_dir", "", "file-notices", "scan"
             )
 
     def test_validation_error_no_report_type(self, report_service):
@@ -371,7 +386,7 @@ class TestSaveReport:
                 unsupported_content,
                 "output_dir",
                 "test_scan",
-                "basic",
+                "file-notices",
                 "scan",
             )
 
@@ -387,15 +402,15 @@ class TestSaveReport:
         with patch("builtins.open", mock_open()) as mock_file:
             with patch("os.makedirs"):
                 result = report_service.save_report(
-                    response, "output_dir", "test_scan", "basic", "scan"
+                    response, "output_dir", "test_scan", "file-notices", "scan"
                 )
                 # Due to errors='replace', it should still be text mode
                 mock_file.assert_called_once_with(
-                    "output_dir/scan-test_scan-basic.txt",
+                    "output_dir/scan-test_scan-file-notices.txt",
                     "w",
                     encoding="utf-8",
                 )
-                assert result == "output_dir/scan-test_scan-basic.txt"
+                assert result == "output_dir/scan-test_scan-file-notices.txt"
 
 
 # --- Tests for build_project_report_payload ---
@@ -714,48 +729,52 @@ class TestCheckProjectReportStatus:
     """Test cases for check_project_report_status method."""
 
     def test_check_project_report_status_success(
-        self, report_service, mock_projects_client
+        self, report_service, mock_status_check
     ):
         """Test successful project report status check."""
-        mock_status = {"progress_state": "FINISHED", "progress": 100}
-        mock_projects_client.check_status.return_value = mock_status
+        mock_raw = {"progress_state": "FINISHED", "progress": 100}
+        mock_status_check.check_project_report_status.return_value = (
+            StatusResult(status="FINISHED", raw_data=mock_raw)
+        )
 
         result = report_service.check_project_report_status(
             12345, "MyProject"
         )
 
-        # Verify check_status was called with correct parameters
-        mock_projects_client.check_status.assert_called_once_with(
-            12345, "REPORT_GENERATION"
+        mock_status_check.check_project_report_status.assert_called_once_with(
+            12345,
+            "MyProject",
+            wait=False,
+            wait_retry_count=360,
+            wait_retry_interval=10,
         )
 
-        # Verify result is passed through
-        assert result == mock_status
+        assert result.status == "FINISHED"
+        assert result.raw_data == mock_raw
 
     def test_check_project_report_status_in_progress(
-        self, report_service, mock_projects_client
+        self, report_service, mock_status_check
     ):
         """Test checking status when report generation is in progress."""
-        mock_status = {"progress_state": "IN_PROGRESS", "progress": 50}
-        mock_projects_client.check_status.return_value = mock_status
+        mock_raw = {"progress_state": "IN_PROGRESS", "progress": 50}
+        mock_status_check.check_project_report_status.return_value = (
+            StatusResult(status="RUNNING", raw_data=mock_raw)
+        )
 
         result = report_service.check_project_report_status(
             12345, "MyProject"
         )
 
-        mock_projects_client.check_status.assert_called_once_with(
-            12345, "REPORT_GENERATION"
-        )
-        assert result["progress_state"] == "IN_PROGRESS"
-        assert result["progress"] == 50
+        assert result.raw_data["progress_state"] == "IN_PROGRESS"
+        assert result.raw_data["progress"] == 50
 
     def test_check_project_report_status_api_error(
-        self, report_service, mock_projects_client
+        self, report_service, mock_status_check
     ):
         """Test status check when API returns error."""
         from workbench_agent.api.exceptions import ApiError
 
-        mock_projects_client.check_status.side_effect = ApiError(
+        mock_status_check.check_project_report_status.side_effect = ApiError(
             "Process not found"
         )
 
@@ -884,7 +903,7 @@ class TestReportParameterValidation:
         assert payload["report_content_type"] == "abbreviated"
 
     def test_scan_html_report_content_type(self, report_service):
-        """Test that scan HTML (basic) reports support report_content_type."""
+        """Test that scan HTML reports support report_content_type."""
         payload = report_service.build_scan_report_payload(
             scan_code="scan123",
             report_type="html",
@@ -892,3 +911,177 @@ class TestReportParameterValidation:
         )
 
         assert payload["report_content_type"] == "abbreviated"
+
+
+class TestReportVersionGating:
+    """Version-aware report types and payload fields."""
+
+    def test_aggregated_notices_requires_newer_workbench(self):
+        """Explicit aggregated-notices on older server raises."""
+        from unittest.mock import MagicMock
+
+        svc = ReportService(
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            status_check_service=MagicMock(),
+            workbench_version="24.3.2",
+        )
+        with pytest.raises(ValidationError, match="aggregated-notices"):
+            svc.validate_report_type("aggregated-notices", "scan")
+
+    def test_include_dep_det_info_omitted_below_25_1(self):
+        """include_dep_det_info stripped from payload when server < 25.1."""
+        from unittest.mock import MagicMock
+
+        svc = ReportService(
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            status_check_service=MagicMock(),
+            workbench_version="24.3.2",
+        )
+        payload = svc.build_scan_report_payload(
+            scan_code="s1",
+            report_type="xlsx",
+            include_dep_det_info=True,
+        )
+        assert "include_dep_det_info" not in payload
+
+    def test_notice_generate_rejects_generate_scan_report(self, report_service):
+        """Notice report types must not use generate_scan_report."""
+        with pytest.raises(ValidationError, match="notice extract"):
+            report_service.generate_scan_report("s1", "file-notices")
+
+    def test_check_notice_extract_dispatches(self, report_service, mock_status_check):
+        """check_notice_extract_status routes to the correct status method."""
+        mock_status_check.check_notice_extract_file_status.return_value = (
+            StatusResult(status="FINISHED", raw_data={})
+        )
+        report_service.check_notice_extract_status(
+            "s1", "NOTICE_EXTRACT_FILE", wait=False
+        )
+        mock_status_check.check_notice_extract_file_status.assert_called_once()
+
+
+class TestResolveReportTypes:
+    """Tests for resolve_report_types (ALL vs explicit)."""
+
+    def test_all_excludes_types_below_min_version(self):
+        """ALL drops report types not supported by connected version."""
+        from unittest.mock import MagicMock
+
+        svc = ReportService(
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            status_check_service=MagicMock(),
+            workbench_version="24.0.0",
+        )
+        result = svc.resolve_report_types(
+            "scan", "ALL", server_version="24.0.0"
+        )
+        assert "aggregated-notices" not in result
+        assert "html" in result
+
+    def test_explicit_comma_separated(self, report_service):
+        result = report_service.resolve_report_types("scan", " html , xlsx ")
+        assert result == {"html", "xlsx"}
+
+    def test_invalid_scope_raises(self, report_service):
+        with pytest.raises(ValidationError, match="Invalid report scope"):
+            report_service.resolve_report_types("invalid", "ALL")
+
+
+class TestRunAndDownloadReport:
+    """SDK convenience: generate, wait when needed, download, save."""
+
+    def test_sync_scan_skips_status_poll(
+        self, report_service, mock_scans_client, mock_status_check
+    ):
+        mock_resp = MagicMock(spec=requests.Response)
+        mock_scans_client.generate_report.return_value = mock_resp
+        with patch.object(
+            report_service, "save_report", return_value="/out/p"
+        ) as save:
+            path = report_service.run_and_download_report(
+                "scan",
+                "html",
+                "/out",
+                "MyScan",
+                scan_code="s1",
+                wait_retry_count=1,
+                wait_retry_interval=1,
+            )
+        assert path == "/out/p"
+        save.assert_called_once()
+        mock_scans_client.generate_report.assert_called_once()
+        mock_status_check.check_scan_report_status.assert_not_called()
+
+    def test_async_scan_polls_and_downloads(
+        self,
+        report_service,
+        mock_scans_client,
+        mock_downloads_client,
+        mock_status_check,
+    ):
+        mock_scans_client.generate_report.return_value = 99
+        dl = MagicMock(spec=requests.Response)
+        mock_downloads_client.download_report.return_value = dl
+        with patch.object(
+            report_service, "save_report", return_value="/saved/here"
+        ):
+            path = report_service.run_and_download_report(
+                "scan",
+                "xlsx",
+                "/out",
+                "S",
+                scan_code="sc",
+            )
+        assert path == "/saved/here"
+        mock_status_check.check_scan_report_status.assert_called_once()
+        mock_downloads_client.download_report.assert_called_once_with(
+            "scans", 99
+        )
+
+    def test_notice_extract_requires_status_check(self):
+        from unittest.mock import MagicMock
+
+        svc = ReportService(
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            status_check_service=None,
+            workbench_version="25.1.0",
+        )
+        with pytest.raises(RuntimeError, match="status_check_service"):
+            svc.run_and_download_report(
+                "scan",
+                "file-notices",
+                "/o",
+                "n",
+                scan_code="s",
+            )
+
+    def test_notice_extract_happy_path(
+        self, report_service, mock_scans_client, mock_status_check
+    ):
+        mock_scans_client.notice_extract_run.return_value = True
+        mock_status_check.check_notice_extract_file_status.return_value = (
+            StatusResult(status="FINISHED", raw_data={})
+        )
+        resp = MagicMock(spec=requests.Response)
+        mock_scans_client.notice_extract_download.return_value = resp
+        with patch.object(
+            report_service, "save_report", return_value="/o/f.txt"
+        ):
+            path = report_service.run_and_download_report(
+                "scan",
+                "file-notices",
+                "/o",
+                "scanA",
+                scan_code="s1",
+            )
+        assert path == "/o/f.txt"
+        mock_scans_client.notice_extract_run.assert_called_once()
+        mock_scans_client.notice_extract_download.assert_called_once()

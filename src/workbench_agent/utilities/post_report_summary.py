@@ -31,9 +31,9 @@ def _format_report_parameters(
     
     Returns a formatted string showing which parameters were used.
     """
-    capabilities = workbench.reports.REPORT_TYPE_CAPABILITIES.get(
-        report_type, {}
-    )
+    capabilities = (
+        workbench.reports.REPORT_DEFS.get(report_type) or {}
+    ).get("capabilities") or {}
     
     param_parts = []
     

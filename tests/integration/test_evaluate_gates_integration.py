@@ -202,11 +202,11 @@ class TestEvaluateGatesIntegration:
         """
         Test evaluate-gates command when project is not found (should fail).
         """
-        from workbench_agent.api.exceptions import ScanNotFoundError
+        from workbench_agent.api.exceptions import ProjectNotFoundError
 
-        mock_workbench_api.resolver.find_scan.side_effect = (
-            ScanNotFoundError(
-                "Scan 'TestScan' not found in project 'NonExistentProj'"
+        mock_workbench_api.resolver.find_project_and_scan.side_effect = (
+            ProjectNotFoundError(
+                "Project 'NonExistentProj' not found"
             )
         )
 

@@ -578,76 +578,132 @@ class StatusCheckService:
 
     # --- NOTICE EXTRACTION OPERATIONS ---
 
+    def _get_notice_extract_status_oneshot(
+        self, scan_code: str, notice_type: str
+    ) -> StatusResult:
+        """Single check_status poll for a NOTICE_EXTRACT_* process type."""
+        status_data = self._scans.check_status(scan_code, notice_type)
+        normalized_status = self._standard_scan_status_accessor(status_data)
+        return StatusResult(
+            status=normalized_status,
+            raw_data=status_data,
+        )
+
+    def _check_notice_extract_status(
+        self,
+        scan_code: str,
+        notice_type: str,
+        wait: bool,
+        wait_retry_count: int,
+        wait_retry_interval: int,
+    ) -> StatusResult:
+        """Shared wait / no-wait implementation for notice extract status."""
+        if wait:
+            return wait_for_completion(
+                check_function=lambda: self._get_notice_extract_status_oneshot(
+                    scan_code, notice_type
+                ),
+                max_tries=wait_retry_count,
+                wait_interval=wait_retry_interval,
+                operation_name=(
+                    f"Notice Extract '{notice_type}' on '{scan_code}'"
+                ),
+            )
+        return self._get_notice_extract_status_oneshot(
+            scan_code, notice_type
+        )
+
     def check_notice_extract_file_status(
-        self, scan_code: str
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
     ) -> StatusResult:
         """
         Check the status of a notice file extraction operation.
 
+        Uses ``scans -> check_status`` with type ``NOTICE_EXTRACT_FILE``.
+
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+            wait_retry_count: Maximum attempts when waiting (default: 360)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10)
 
         Returns:
-            StatusResult with notice extract file status information
+            StatusResult with notice extract file status information.
+            When wait=True, duration will be populated.
         """
-        status_data = self._scans.check_status(
-            scan_code, "NOTICE_EXTRACT_FILE"
-        )
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        return StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
+        return self._check_notice_extract_status(
+            scan_code,
+            "NOTICE_EXTRACT_FILE",
+            wait,
+            wait_retry_count,
+            wait_retry_interval,
         )
 
     def check_notice_extract_component_status(
-        self, scan_code: str
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
     ) -> StatusResult:
         """
         Check the status of a notice component extraction operation.
 
+        Uses ``scans -> check_status`` with type ``NOTICE_EXTRACT_COMPONENT``.
+
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+            wait_retry_count: Maximum attempts when waiting (default: 360)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10)
 
         Returns:
-            StatusResult with notice extract component status
+            StatusResult with notice extract component status.
+            When wait=True, duration will be populated.
         """
-        status_data = self._scans.check_status(
-            scan_code, "NOTICE_EXTRACT_COMPONENT"
-        )
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        return StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
+        return self._check_notice_extract_status(
+            scan_code,
+            "NOTICE_EXTRACT_COMPONENT",
+            wait,
+            wait_retry_count,
+            wait_retry_interval,
         )
 
     def check_notice_extract_aggregate_status(
-        self, scan_code: str
+        self,
+        scan_code: str,
+        wait: bool = False,
+        wait_retry_count: int = 360,
+        wait_retry_interval: int = 10,
     ) -> StatusResult:
         """
         Check the status of a notice aggregate extraction operation.
 
+        Uses ``scans -> check_status`` with type ``NOTICE_EXTRACT_AGGREGATE``.
+
         Args:
             scan_code: Code of the scan to check
+            wait: If True, wait until operation reaches terminal state
+            wait_retry_count: Maximum attempts when waiting (default: 360)
+            wait_retry_interval: Seconds between attempts when waiting
+                (default: 10)
 
         Returns:
-            StatusResult with notice extract aggregate status
+            StatusResult with notice extract aggregate status.
+            When wait=True, duration will be populated.
         """
-        status_data = self._scans.check_status(
-            scan_code, "NOTICE_EXTRACT_AGGREGATE"
-        )
-        normalized_status = self._standard_scan_status_accessor(
-            status_data
-        )
-
-        return StatusResult(
-            status=normalized_status,
-            raw_data=status_data,
+        return self._check_notice_extract_status(
+            scan_code,
+            "NOTICE_EXTRACT_AGGREGATE",
+            wait,
+            wait_retry_count,
+            wait_retry_interval,
         )
 
     # --- REPORT OPERATIONS ---

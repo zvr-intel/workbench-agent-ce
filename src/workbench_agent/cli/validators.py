@@ -99,7 +99,7 @@ def _validate_id_reuse_args(args: Namespace) -> None:
 
     Since the new arguments are mutually exclusive at the argparse level,
     validation is mainly about ensuring required parameters are provided.
-    The argparse mutually exclusive group handles most validation automatically.
+    The argparse mutually exclusive group handles most validation.
     """
     # Check if any reuse argument is provided
     reuse_args = [
@@ -109,16 +109,16 @@ def _validate_id_reuse_args(args: Namespace) -> None:
         getattr(args, "reuse_project_ids", None),
     ]
 
-    # Count how many reuse arguments are provided (mutually exclusive should ensure max 1)
+    # Count reuse arguments provided (mutually exclusive ensures max 1)
     provided_reuse_args = sum(1 for arg in reuse_args if arg)
 
     if provided_reuse_args > 1:
-        # This should not happen due to mutually exclusive group, but safety check
+        # This should not happen due to mutually exclusive group
         raise ValidationError(
-            "Multiple identification reuse arguments provided. Only one reuse option is allowed."
+            "Multiple ID Reuse arguments provided. Only one option is allowed."
         )
 
-    # Validate that required parameters are provided for arguments that need them
+    # Validate required parameters are provided for arguments that need them
     if (
         getattr(args, "reuse_scan_ids", None) is not None
         and not args.reuse_scan_ids.strip()
@@ -154,7 +154,7 @@ def _validate_import_commands(args: Namespace) -> None:
 
 def _validate_da_results_file(path: str) -> None:
     """
-    Best effort validation that the DA results file comes from ORT or FossID-DA.
+    Best effort validation that the DA results come from ORT or FossID-DA.
 
     Validates:
     - Path must be a file (not a directory)
@@ -179,17 +179,17 @@ def _validate_da_results_file(path: str) -> None:
 
 def _validate_download_reports_command(args: Namespace) -> None:
     """Validate download-reports command."""
-    report_scope = getattr(args, "report_scope", None)
-    project_name = getattr(args, "project_name", None)
-    scan_name = getattr(args, "scan_name", None)
+    report_scope = getattr(args, "report_scope", None) or "scan"
+    project_name = (getattr(args, "project_name", None) or "").strip()
+    scan_name = (getattr(args, "scan_name", None) or "").strip()
 
-    if report_scope == "project" and not project_name:
+    if not project_name:
         raise ValidationError(
-            "Project name is required for project scope report"
+            "Please provide a project name (use --project-name)"
         )
     if report_scope == "scan" and not scan_name:
         raise ValidationError(
-            "Scan name is required for scan scope report"
+            "Scan scope reports require the scan name (use --scan-name)"
         )
 
 

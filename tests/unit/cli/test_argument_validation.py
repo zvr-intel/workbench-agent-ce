@@ -51,27 +51,41 @@ class TestValidationRules:
             .build()
         )
 
-        with pytest.raises(
-            ValidationError,
-            match="Project name is required for project scope report",
-        ):
+        with pytest.raises(ValidationError) as exc_info:
             arg_parser(cmd_args)
+        assert "--project-name" in str(exc_info.value)
 
     def test_download_reports_missing_scan_for_scan_scope(
         self, args, arg_parser
     ):
         """Test validation when scan name is missing for scan scope reports."""
         cmd_args = (
-            args().download_reports(scope="scan")
+            args()
+            .download_reports(scope="scan")
+            .project_name("MyProject")
             # Missing scan_name
             .build()
         )
 
-        with pytest.raises(
-            ValidationError,
-            match="Scan name is required for scan scope report",
-        ):
+        with pytest.raises(ValidationError) as exc_info:
             arg_parser(cmd_args)
+        assert "--scan-name" in str(exc_info.value)
+
+    def test_download_reports_missing_project_for_scan_scope(
+        self, args, arg_parser
+    ):
+        """Test validation when project name is missing for scan scope."""
+        cmd_args = (
+            args()
+            .download_reports(scope="scan")
+            .scan_name("MyScan")
+            # Missing project_name
+            .build()
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            arg_parser(cmd_args)
+        assert "--project-name" in str(exc_info.value)
 
     def test_show_results_missing_show_flags(self, args, arg_parser):
         """Test validation when no show flags are provided for show-results."""

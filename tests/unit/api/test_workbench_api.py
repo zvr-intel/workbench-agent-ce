@@ -11,12 +11,13 @@ from workbench_agent.api.services.report_service import ReportService
 
 # --- Test API Class Constants ---
 def test_api_report_type_constants():
-    """Test that the ReportService class constants are defined correctly."""
+    """Test that report type sets match ``REPORT_DEFS``."""
     assert isinstance(ReportService.ASYNC_REPORT_TYPES, set)
-    assert isinstance(ReportService.PROJECT_REPORT_TYPES, set)
-    assert isinstance(ReportService.SCAN_REPORT_TYPES, set)
+    scan_types = ReportService.report_types_for_scope("scan")
+    project_types = ReportService.report_types_for_scope("project")
+    assert isinstance(scan_types, set)
+    assert isinstance(project_types, set)
 
-    # Verify specific values
     assert "xlsx" in ReportService.ASYNC_REPORT_TYPES
-    assert "spdx" in ReportService.PROJECT_REPORT_TYPES
-    assert "html" in ReportService.SCAN_REPORT_TYPES
+    assert "spdx" in project_types
+    assert "html" in scan_types

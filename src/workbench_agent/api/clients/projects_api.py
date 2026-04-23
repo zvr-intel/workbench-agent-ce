@@ -78,9 +78,6 @@ class ProjectsClient:
             ApiError: If there are API issues
             NetworkError: If there are network issues
 
-        Note:
-            The response format varies by Workbench version. The method handles both
-            minimal (< 23.3.0) and extended (>= 23.3.0) response formats automatically.
         """
         logger.debug("Listing all projects...")
 
@@ -98,7 +95,8 @@ class ProjectsClient:
                 return data
             else:
                 logger.warning(
-                    f"API returned success for list_projects but 'data' was not a list: {type(data)}"
+                    f"API returned success but 'data' was not a list: "
+                    f"{type(data)}"
                 )
                 return []
         else:
@@ -117,7 +115,7 @@ class ProjectsClient:
             project_code: Code of the project to get information for
 
         Returns:
-            Dict[str, Any]: Project information including owner details, dates, etc.
+            Dict[str, Any]: Project information including owner, and more.
 
         Raises:
             ProjectNotFoundError: If the project doesn't exist
@@ -136,7 +134,7 @@ class ProjectsClient:
 
         if response.get("status") == "1" and "data" in response:
             logger.debug(
-                f"Successfully fetched information for project '{project_code}'."
+                f"Success fetching information for project '{project_code}'."
             )
             return response["data"]
         else:
@@ -151,7 +149,7 @@ class ProjectsClient:
                     f"Project '{project_code}' not found"
                 )
             raise ApiError(
-                f"Failed to get information for project '{project_code}': {error_msg}",
+                f"Failed to get project info for'{project_code}': {error_msg}",
                 details=response,
             )
 
@@ -182,17 +180,17 @@ class ProjectsClient:
             data = response["data"]
             if isinstance(data, list):
                 logger.debug(
-                    f"Successfully listed {len(data)} scans for project '{project_code}'."
+                    f"Found {len(data)} scans in project '{project_code}'."
                 )
                 return data
             else:
                 logger.warning(
-                    f"API returned success for get_all_scans but 'data' was not a list: {type(data)}"
+                    f"API success but 'data' is not a list: {type(data)}"
                 )
                 return []
         elif response.get("status") == "1":
             logger.warning(
-                "API returned success for get_all_scans but no 'data' key found."
+                "API success but no 'data' key found."
             )
             return []
         else:
@@ -205,12 +203,13 @@ class ProjectsClient:
                 or "row_not_found" in error_msg
             ):
                 logger.warning(
-                    f"Project '{project_code}' not found when trying to list its scans."
+                    f"Project code '{project_code}' not found."
                 )
                 return []
             else:
                 raise ApiError(
-                    f"Failed to list scans for project '{project_code}': {error_msg}",
+                    f"Failed to list scans in project '{project_code}': "
+                    f"{error_msg}",
                     details=response,
                 )
 
@@ -227,31 +226,31 @@ class ProjectsClient:
         """
         Create a new project in Workbench.
 
-        This method directly wraps the API's create action. For "find or create"
-        patterns, prefer using ResolverService.resolve_project_and_scan() or
-        ResolverService.find_project().
+        This method wraps the API's create action. For "find or create"
+        patterns, use ResolverService.find_or_create_project_and_scan()
+        or ResolverService.find_project().
 
         Args:
             project_name: Name of the project to create
             product_code: Optional product code
-            product_name: Optional product name (human-readable application name)
+            product_name: Optional product name (human-readable app name)
             description: Optional description
             comment: Optional comment
-            limit_date: Optional deadline date (must be valid date string, e.g., "2025-12-31")
+            limit_date: Optional deadline date (must be valid date string)
             jira_project_key: Optional JIRA project key for integration
 
         Returns:
-            The project code of the created project (auto-generated as {project_name}_{project_id})
+            The project code of the created project
 
         Raises:
-            ApiError: If project creation fails (e.g., invalid date format for limit_date)
+            ApiError: If project creation fails
             NetworkError: If there are network issues
 
         Note:
-            - The project_code is auto-generated by Workbench from the project_name
-            - If limit_date is provided, it must be a valid date string or the API will return:
+            - The project_code is auto-generated by Workbench
+            - If limit_date is provided, use a valid date or the API returns
               "RequestData.Base.field_contains_not_valid_date_string"
-            - This method does not check for existing projects. Use ResolverService
+            - This method does care for existing projects. Use ResolverService
               for "find or create" patterns.
         """
         # Create the project with additional metadata
@@ -336,7 +335,7 @@ class ProjectsClient:
             product_name: Optional product name
             description: Optional description
             comment: Optional comment
-            limit_date: Optional deadline date (must be valid date string, e.g., "2025-12-31")
+            limit_date: Optional deadline date (must be valid date)
             jira_project_key: Optional JIRA project key for integration
             new_project_owner: Optional username to change project ownership
 

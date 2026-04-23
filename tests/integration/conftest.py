@@ -387,13 +387,17 @@ def mock_workbench_api(mocker):
 
     # --- Mock Resolver Service ---
     mock_client.resolver = MagicMock()
-    mock_client.resolver.resolve_project_and_scan.return_value = (
+    mock_client.resolver.find_or_create_project_and_scan.return_value = (
         "PRJ-MOCK",
         "SCN-MOCK",
         False,
     )
     mock_client.resolver.find_project.return_value = "PRJ-MOCK"
-    mock_client.resolver.find_scan.return_value = ("SCN-MOCK", 12345)
+    mock_client.resolver.find_project_and_scan.return_value = (
+        "PRJ-MOCK",
+        "SCN-MOCK",
+        12345,
+    )
     mock_client.resolver.resolve_id_reuse.return_value = (None, None)
     mock_client.resolver.ensure_scan_compatible = MagicMock()
 
@@ -500,6 +504,7 @@ def mock_workbench_api(mocker):
 
     # --- Mock Reports Service ---
     mock_client.reports = MagicMock()
+    mock_client.reports.resolve_report_types.return_value = {"spdx"}
 
     # --- Mock Internal Client (for version check) ---
     mock_client.internal = MagicMock()

@@ -26,7 +26,7 @@ Usage:
     >>>
     >>> # Use services for high-level orchestration
     >>> p_code, s_code, is_new = (
-    ...     workbench.resolver.resolve_project_and_scan(
+    ...     workbench.resolver.find_or_create_project_and_scan(
     ...         "MyProject", "MyScan", params
     ...     )
     ... )
@@ -106,7 +106,7 @@ class WorkbenchClient:
         >>>
         >>> # High-level workflows via services
         >>> p_code, s_code, is_new = (
-        ...     workbench.resolver.resolve_project_and_scan(
+        ...     workbench.resolver.find_or_create_project_and_scan(
         ...         "MyProject", "MyScan", params
         ...     )
         ... )
@@ -201,6 +201,8 @@ class WorkbenchClient:
             projects_client=self.projects,
             scans_client=self.scans,
             downloads_client=self.downloads,
+            status_check_service=self.status_check,
+            workbench_version=self._workbench_version,
         )
 
         self.results = ResultsService(

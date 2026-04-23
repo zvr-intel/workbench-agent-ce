@@ -3,7 +3,18 @@
 import sys
 from unittest.mock import mock_open, patch
 
+from workbench_agent.api.utils.process_waiter import StatusResult
 from workbench_agent.main import main
+
+
+def _finished_report_wait_result() -> StatusResult:
+    """StatusResult used when mocking async / notice report completion."""
+    return StatusResult(
+        status="FINISHED",
+        raw_data={"status": "FINISHED"},
+        duration=5.0,
+        success=True,
+    )
 
 
 class TestDownloadReportsIntegration:
@@ -20,17 +31,6 @@ class TestDownloadReportsIntegration:
         report_dir.mkdir()
 
         # Mock report service methods
-        from workbench_agent.api.utils.process_waiter import StatusResult
-
-        mock_workbench_api.reports.SCAN_REPORT_TYPES = {
-            "html",
-            "spdx",
-            "spdx_lite",
-            "cyclone_dx",
-            "xlsx",
-            "dynamic_top_matched_components",
-            "string_match",
-        }
         mock_workbench_api.reports.generate_scan_report.return_value = (
             12345
         )
@@ -40,11 +40,8 @@ class TestDownloadReportsIntegration:
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
         )
-        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = StatusResult(
-            status="FINISHED",
-            raw_data={"status": "FINISHED"},
-            duration=5.0,
-            success=True,
+        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = (
+            _finished_report_wait_result()
         )
 
         # Mock file operations
@@ -94,16 +91,10 @@ class TestDownloadReportsIntegration:
         report_dir.mkdir()
 
         # Mock report service methods
-        from workbench_agent.api.utils.process_waiter import StatusResult
-
-        mock_workbench_api.reports.SCAN_REPORT_TYPES = {
-            "html",
+        mock_workbench_api.reports.resolve_report_types.return_value = {
             "spdx",
-            "spdx_lite",
             "cyclone_dx",
             "xlsx",
-            "dynamic_top_matched_components",
-            "string_match",
         }
         mock_workbench_api.reports.generate_scan_report.side_effect = [
             12345,
@@ -118,11 +109,8 @@ class TestDownloadReportsIntegration:
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
         )
-        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = StatusResult(
-            status="FINISHED",
-            raw_data={"status": "FINISHED"},
-            duration=5.0,
-            success=True,
+        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = (
+            _finished_report_wait_result()
         )
 
         # Mock file operations
@@ -174,14 +162,6 @@ class TestDownloadReportsIntegration:
         report_dir.mkdir()
 
         # Mock report service methods
-        from workbench_agent.api.utils.process_waiter import StatusResult
-
-        mock_workbench_api.reports.PROJECT_REPORT_TYPES = {
-            "xlsx",
-            "spdx",
-            "spdx_lite",
-            "cyclone_dx",
-        }
         mock_workbench_api.reports.generate_project_report.return_value = (
             12345
         )
@@ -191,11 +171,8 @@ class TestDownloadReportsIntegration:
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
         )
-        mock_workbench_api.waiting.wait_for_project_report_completion.return_value = StatusResult(
-            status="FINISHED",
-            raw_data={"status": "FINISHED"},
-            duration=5.0,
-            success=True,
+        mock_workbench_api.waiting.wait_for_project_report_completion.return_value = (
+            _finished_report_wait_result()
         )
 
         # Mock file operations
@@ -246,7 +223,7 @@ class TestDownloadReportsIntegration:
         # Mock resolver to raise ProjectNotFoundError
         from workbench_agent.api.exceptions import ProjectNotFoundError
 
-        mock_workbench_api.resolver.find_project.side_effect = (
+        mock_workbench_api.resolver.find_project_and_scan.side_effect = (
             ProjectNotFoundError("Project 'NonExistentProj' not found")
         )
 
@@ -297,7 +274,7 @@ class TestDownloadReportsIntegration:
         # Mock scan resolver to raise ScanNotFoundError
         from workbench_agent.api.exceptions import ScanNotFoundError
 
-        mock_workbench_api.resolver.find_scan.side_effect = (
+        mock_workbench_api.resolver.find_project_and_scan.side_effect = (
             ScanNotFoundError(
                 "Scan 'NonExistentScan' not found in project 'TestProj'"
             )

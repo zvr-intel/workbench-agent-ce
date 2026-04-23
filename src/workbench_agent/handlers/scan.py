@@ -66,7 +66,7 @@ def handle_scan(
     # ===== STEP 1: Resolve project and scan =====
     print("\n--- Project and Scan Checks ---")
     print("Checking target Project and Scan...")
-    _, scan_code, scan_is_new = client.resolver.resolve_project_and_scan(
+    _, scan_code, scan_is_new = client.resolver.find_or_create_project_and_scan(
         project_name=params.project_name,
         scan_name=params.scan_name,
         params=params,

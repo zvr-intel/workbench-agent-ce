@@ -25,7 +25,7 @@ def base_params():
 @pytest.fixture
 def mock_client():
     client = MagicMock()
-    client.resolver.resolve_project_and_scan.return_value = (
+    client.resolver.find_or_create_project_and_scan.return_value = (
         "proj_code",
         "scan_code",
         False,
@@ -100,7 +100,7 @@ class TestScanHandlerClearBehavior:
         self, _mock_preflight, _mock_workflow, mock_client, base_params
     ):
         """New scans never clear content, with or without the flag."""
-        mock_client.resolver.resolve_project_and_scan.return_value = (
+        mock_client.resolver.find_or_create_project_and_scan.return_value = (
             "proj_code",
             "scan_code",
             True,
@@ -120,7 +120,7 @@ class TestScanHandlerClearBehavior:
         self, _mock_preflight, _mock_workflow, mock_client, base_params
     ):
         """New scans skip clearing even without --incremental-upload."""
-        mock_client.resolver.resolve_project_and_scan.return_value = (
+        mock_client.resolver.find_or_create_project_and_scan.return_value = (
             "proj_code",
             "scan_code",
             True,
