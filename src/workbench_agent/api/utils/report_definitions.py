@@ -1,8 +1,7 @@
 """
-Static report type registry: scopes, async behavior, capabilities, and version gates.
+Report type registry: scopes, async behavior, capabilities, and version gates.
 
-Used by ReportService and other callers that need capability metadata without
-instantiating the service.
+Used by ReportService and other callers that need capability metadata.
 """
 
 from typing import Any, Dict

@@ -1,8 +1,8 @@
 """
 Process waiting data structures and utilities.
 
-This module defines standard data structures and utilities used throughout
-the waiting infrastructure. These provide consistent interfaces for status
+This module defines data structures and utilities used throughout
+waiting infrastructure to provide consistent interfaces for status
 checking and wait result reporting.
 """
 
@@ -144,11 +144,6 @@ class StatusResult:
             self.progress_info = progress_data if progress_data else None
 
 
-# DEPRECATED: WaitResult is merged into StatusResult
-# Kept for backward compatibility - just an alias
-WaitResult = StatusResult
-
-
 # =============================================================================
 # WAITING INFRASTRUCTURE UTILITIES
 # =============================================================================
@@ -156,11 +151,10 @@ WaitResult = StatusResult
 
 def extract_server_duration(raw_data: Any) -> Optional[float]:
     """
-    Extract actual process duration from server timestamps.
+    Extract process duration from server timestamps.
 
     This utility extracts server-side duration from started/finished
-    timestamps if available in the response. Works for scan operations
-    that have timestamp data.
+    timestamps in the response.
 
     Args:
         raw_data: Raw response data from the API

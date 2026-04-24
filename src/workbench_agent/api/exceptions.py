@@ -2,8 +2,7 @@
 Custom exceptions for Workbench API SDK.
 
 This module defines the exception hierarchy for the Workbench API client SDK.
-All SDK exceptions inherit from WorkbenchApiError to allow for easy catching
-of SDK-specific errors when using this package.
+All SDK exceptions inherit from WorkbenchApiError to catch SDK-specific errors.
 
 When distributed as an independent SDK, consumers can catch these exceptions
 to handle API-related errors gracefully.
@@ -16,7 +15,6 @@ class WorkbenchApiError(Exception):
     """Base class for all Workbench API SDK errors.
 
     All custom exceptions in this module should inherit from this class.
-    This allows SDK consumers to catch any Workbench API-specific error.
 
     Attributes:
         message: A human-readable error message
