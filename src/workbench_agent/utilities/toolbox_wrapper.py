@@ -7,12 +7,13 @@ used primarily for blind scanning using its hash command.
 
 import logging
 import os
-import random
 import subprocess
+import tempfile
 import traceback
 
 from workbench_agent.api.exceptions import ProcessError
 from workbench_agent.exceptions import FileSystemError
+from workbench_agent.utilities.upload_data_prep import cleanup_temp_path
 
 logger = logging.getLogger("workbench-agent")
 
@@ -119,23 +120,21 @@ class ToolboxWrapper:
         if not os.path.exists(path):
             raise FileSystemError(f"Scan path does not exist: {path}")
 
-        temporary_file_path = (
-            f"/tmp/blind_scan_result_{self.randstring(8)}.fossid"
-        )
+        # Securely allocate the output file in the system temp dir.
+        try:
+            fd, temporary_file_path = tempfile.mkstemp(
+                prefix="blind_scan_result_", suffix=".fossid"
+            )
+            os.close(fd)
+        except OSError as e:
+            raise FileSystemError(
+                f"Failed to create temporary hash file: {e}"
+            ) from e
+
         logger.info(f"Hashing path: {path}")
         logger.debug(
             f"Temporary file will be created at: {temporary_file_path}"
         )
-
-        # Create temporary file, make it empty if already exists
-        try:
-            with open(temporary_file_path, "w"):
-                pass  # Create empty file
-        except Exception as e:
-            raise FileSystemError(
-                f"Failed to create temporary file "
-                f"{temporary_file_path}: {e}"
-            ) from e
 
         # Build fossid-toolbox hash command
         # Format: fossid-toolbox hash [OPTIONS] <PATHS>...
@@ -171,9 +170,7 @@ class ToolboxWrapper:
                     f"{result.returncode}: {result.stderr}"
                 )
                 logger.error(error_msg)
-                # Clean up temporary file
-                if os.path.exists(temporary_file_path):
-                    os.remove(temporary_file_path)
+                cleanup_temp_path(temporary_file_path)
                 raise ProcessError(error_msg)
 
             # Verify temporary file was created and has content
@@ -201,31 +198,11 @@ class ToolboxWrapper:
                 f"Hash generation timed out after {self.timeout} seconds"
             )
             logger.error(error_msg)
-            # Clean up temporary file
-            if os.path.exists(temporary_file_path):
-                os.remove(temporary_file_path)
+            cleanup_temp_path(temporary_file_path)
             raise ProcessError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error during hash generation: {e}"
             logger.error(error_msg)
             logger.debug(traceback.format_exc())
-            # Clean up temporary file
-            if os.path.exists(temporary_file_path):
-                os.remove(temporary_file_path)
+            cleanup_temp_path(temporary_file_path)
             raise ProcessError(error_msg) from e
-
-    @staticmethod
-    def randstring(length: int = 10) -> str:
-        """
-        Generate a random string of a given length.
-
-        Parameters:
-            length: Length of the generated string (default: 10)
-
-        Returns:
-            str: Random string of specified length
-        """
-        valid_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        return "".join(
-            (random.choice(valid_letters) for i in range(length))
-        )
