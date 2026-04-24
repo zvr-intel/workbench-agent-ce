@@ -8,7 +8,11 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
 from workbench_agent.exceptions import FileSystemError
-from workbench_agent.utilities.prep_upload_archive import UploadArchivePrep
+from workbench_agent.utilities.upload_data_prep import (
+    UploadArchivePrep,
+    cleanup_temp_path,
+    prepare_scan_target,
+)
 
 
 # --- Tests for should_exclude_file ---
@@ -375,7 +379,7 @@ def test_create_zip_archive_source_not_directory():
 @patch("os.path.exists")
 @patch("os.path.getsize")
 @patch(
-    "workbench_agent.utilities.prep_upload_archive.UploadArchivePrep._parse_gitignore"
+    "workbench_agent.utilities.upload_data_prep.UploadArchivePrep._parse_gitignore"
 )
 def test_create_zip_archive_success(
     mock_parse_gitignore,
@@ -428,7 +432,7 @@ def test_create_zip_archive_success(
 @patch("os.path.exists")
 @patch("os.path.getsize")
 @patch(
-    "workbench_agent.utilities.prep_upload_archive.UploadArchivePrep._parse_gitignore"
+    "workbench_agent.utilities.upload_data_prep.UploadArchivePrep._parse_gitignore"
 )
 def test_create_zip_archive_with_exclusions(
     mock_parse_gitignore,
@@ -734,3 +738,132 @@ def test_create_zip_archive_integration():
                     shutil.rmtree(parent_dir, ignore_errors=True)
             except Exception:
                 pass  # Ignore cleanup errors
+
+
+# --- Tests for cleanup_temp_path ---
+class TestCleanupTempPath:
+    """Tests for the shared cleanup_temp_path helper."""
+
+    def test_no_op_for_none_path(self):
+        """None input returns silently without touching the filesystem."""
+        with patch("os.path.exists") as mock_exists:
+            cleanup_temp_path(None)
+            mock_exists.assert_not_called()
+
+    def test_no_op_for_empty_string(self):
+        """Empty string input returns silently."""
+        with patch("os.path.exists") as mock_exists:
+            cleanup_temp_path("")
+            mock_exists.assert_not_called()
+
+    def test_no_op_when_path_does_not_exist(self):
+        """Missing paths are skipped without raising."""
+        with patch(
+            "os.path.exists", return_value=False
+        ) as mock_exists, patch("os.unlink") as mock_unlink, patch(
+            "shutil.rmtree"
+        ) as mock_rmtree:
+            cleanup_temp_path("/tmp/missing")
+            mock_exists.assert_called_once_with("/tmp/missing")
+            mock_unlink.assert_not_called()
+            mock_rmtree.assert_not_called()
+
+    def test_refuses_to_remove_non_temp_path(self):
+        """Paths outside the system temp dir are skipped (safety guard)."""
+        with patch("os.path.exists", return_value=True), patch(
+            "tempfile.gettempdir", return_value="/tmp"
+        ), patch("os.unlink") as mock_unlink, patch(
+            "shutil.rmtree"
+        ) as mock_rmtree:
+            cleanup_temp_path("/home/user/important.txt")
+            mock_unlink.assert_not_called()
+            mock_rmtree.assert_not_called()
+
+    def test_removes_temp_file(self):
+        """Temp files are removed via os.unlink."""
+        with patch("os.path.exists", return_value=True), patch(
+            "tempfile.gettempdir", return_value="/tmp"
+        ), patch("os.path.isdir", return_value=False), patch(
+            "os.unlink"
+        ) as mock_unlink:
+            cleanup_temp_path("/tmp/some_file.zip")
+            mock_unlink.assert_called_once_with("/tmp/some_file.zip")
+
+    def test_removes_temp_directory(self):
+        """Temp directories are removed recursively via shutil.rmtree."""
+        with patch("os.path.exists", return_value=True), patch(
+            "tempfile.gettempdir", return_value="/tmp"
+        ), patch("os.path.isdir", return_value=True), patch(
+            "shutil.rmtree"
+        ) as mock_rmtree:
+            cleanup_temp_path("/tmp/workbench_upload_xyz")
+            mock_rmtree.assert_called_once_with(
+                "/tmp/workbench_upload_xyz", ignore_errors=True
+            )
+
+    def test_swallows_oserror(self):
+        """OSError during cleanup is logged but does not propagate."""
+        with patch("os.path.exists", return_value=True), patch(
+            "tempfile.gettempdir", return_value="/tmp"
+        ), patch("os.path.isdir", return_value=False), patch(
+            "os.unlink", side_effect=OSError("Permission denied")
+        ), patch(
+            "workbench_agent.utilities.upload_data_prep.logger.warning"
+        ) as mock_warning:
+            cleanup_temp_path("/tmp/locked.zip")
+            mock_warning.assert_called_once()
+
+
+# --- Tests for prepare_scan_target ---
+class TestPreparedScanTarget:
+    """Tests for the prepare_scan_target context manager."""
+
+    def test_file_input_yielded_unchanged(self):
+        """File inputs pass through with no zip + no cleanup."""
+        with patch(
+            "workbench_agent.utilities.upload_data_prep.os.path.isdir",
+            return_value=False,
+        ), patch.object(
+            UploadArchivePrep, "create_zip_archive"
+        ) as mock_create, patch(
+            "workbench_agent.utilities.upload_data_prep.cleanup_temp_path"
+        ) as mock_cleanup:
+            with prepare_scan_target("/path/to/file.zip") as upload_path:
+                assert upload_path == "/path/to/file.zip"
+            mock_create.assert_not_called()
+            mock_cleanup.assert_not_called()
+
+    def test_directory_input_creates_zip_and_cleans_up(self):
+        """Directory inputs are zipped; temp dir is cleaned up on exit."""
+        with patch(
+            "workbench_agent.utilities.upload_data_prep.os.path.isdir",
+            return_value=True,
+        ), patch.object(
+            UploadArchivePrep,
+            "create_zip_archive",
+            return_value="/tmp/abc/source.zip",
+        ) as mock_create, patch(
+            "workbench_agent.utilities.upload_data_prep.cleanup_temp_path"
+        ) as mock_cleanup:
+            with prepare_scan_target("/path/to/source") as upload_path:
+                assert upload_path == "/tmp/abc/source.zip"
+                mock_cleanup.assert_not_called()  # not yet
+            mock_create.assert_called_once_with("/path/to/source")
+            mock_cleanup.assert_called_once_with("/tmp/abc")
+
+    def test_cleanup_runs_on_exception(self):
+        """Cleanup still happens if the with-block raises."""
+        with patch(
+            "workbench_agent.utilities.upload_data_prep.os.path.isdir",
+            return_value=True,
+        ), patch.object(
+            UploadArchivePrep,
+            "create_zip_archive",
+            return_value="/tmp/abc/source.zip",
+        ), patch(
+            "workbench_agent.utilities.upload_data_prep.cleanup_temp_path"
+        ) as mock_cleanup:
+            with pytest.raises(RuntimeError, match="boom"):
+                with prepare_scan_target("/path/to/source"):
+                    raise RuntimeError("boom")
+            mock_cleanup.assert_called_once_with("/tmp/abc")

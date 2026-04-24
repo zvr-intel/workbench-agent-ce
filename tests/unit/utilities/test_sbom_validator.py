@@ -178,7 +178,7 @@ class TestCycloneDXValidationErrors:
                 SBOMValidator._validate_cyclonedx("/path/to/file.json")
 
     def test_validate_cyclonedx_unsupported_upload_version(self):
-        """Test CycloneDX validation fails for versions not supported for upload."""
+        """Test CycloneDX validation fails for unsupported versions."""
         invalid_json = {
             "bomFormat": "CycloneDX",
             "specVersion": "1.3",  # Valid but not supported for upload
@@ -306,55 +306,6 @@ class TestSPDXValidationErrors:
             SBOMValidator._validate_spdx("/nonexistent/file.rdf")
 
         mock_validate_spdx.assert_called_once_with("/nonexistent/file.rdf")
-
-
-class TestCleanupUtility:
-    """Test cases for the cleanup utility."""
-
-    def test_cleanup_temp_file_success(self):
-        """Test successful cleanup of temporary file."""
-        temp_file = "/tmp/spdx_converted_abc123.rdf"
-
-        with patch("os.path.exists", return_value=True):
-            with patch("os.unlink") as mock_unlink:
-                with patch("tempfile.gettempdir", return_value="/tmp"):
-                    SBOMValidator.cleanup_temp_file(temp_file)
-                    mock_unlink.assert_called_once_with(temp_file)
-
-    def test_cleanup_temp_file_not_temp(self):
-        """Test cleanup skips non-temporary files."""
-        regular_file = "/home/user/regular_file.rdf"
-
-        with patch("os.path.exists", return_value=True):
-            with patch("os.unlink") as mock_unlink:
-                with patch("tempfile.gettempdir", return_value="/tmp"):
-                    SBOMValidator.cleanup_temp_file(regular_file)
-                    mock_unlink.assert_not_called()
-
-    def test_cleanup_temp_file_not_exists(self):
-        """Test cleanup handles non-existent file gracefully."""
-        temp_file = "/tmp/nonexistent.rdf"
-
-        with patch("os.path.exists", return_value=False):
-            with patch("os.unlink") as mock_unlink:
-                with patch("tempfile.gettempdir", return_value="/tmp"):
-                    SBOMValidator.cleanup_temp_file(temp_file)
-                    mock_unlink.assert_not_called()
-
-    def test_cleanup_temp_file_failure(self):
-        """Test cleanup handles unlink failure gracefully."""
-        temp_file = "/tmp/spdx_converted_abc123.rdf"
-
-        with patch("os.path.exists", return_value=True):
-            with patch(
-                "os.unlink", side_effect=OSError("Permission denied")
-            ):
-                with patch("tempfile.gettempdir", return_value="/tmp"):
-                    with patch(
-                        "workbench_agent.utilities.sbom_validator.logger.warning"
-                    ) as mock_warning:
-                        SBOMValidator.cleanup_temp_file(temp_file)
-                        mock_warning.assert_called_once()
 
 
 class TestSupportedFormatsMethod:

@@ -10,6 +10,7 @@ from workbench_agent.utilities.pre_flight_checks import scan_pre_flight_check
 from workbench_agent.utilities.scan_workflows import (
     execute_scan_workflow,
 )
+from workbench_agent.utilities.upload_data_prep import prepare_scan_target
 
 if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
@@ -66,10 +67,12 @@ def handle_scan(
     # ===== STEP 1: Resolve project and scan =====
     print("\n--- Project and Scan Checks ---")
     print("Checking target Project and Scan...")
-    _, scan_code, scan_is_new = client.resolver.find_or_create_project_and_scan(
-        project_name=params.project_name,
-        scan_name=params.scan_name,
-        params=params,
+    _, scan_code, scan_is_new = (
+        client.resolver.find_or_create_project_and_scan(
+            project_name=params.project_name,
+            scan_name=params.scan_name,
+            params=params,
+        )
     )
 
     # ===== STEP 2: Pre-Flight Checks =====
@@ -97,8 +100,9 @@ def handle_scan(
 
     # ===== STEP 4: Upload code =====
     print("\n--- Preparing Scan Target ---")
-    print("\nUploading Code to Workbench...")
-    client.upload_service.upload_scan_target(scan_code, params.path)
+    with prepare_scan_target(params.path) as upload_path:
+        print("\nUploading Code to Workbench...")
+        client.upload_service.upload_scan_target(scan_code, upload_path)
 
     # ===== STEP 5: Extract archives =====
     print("\nExtracting Uploaded Archive...")

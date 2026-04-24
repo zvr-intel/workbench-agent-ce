@@ -34,13 +34,33 @@ def test_upload_service_initialization(
 
 @patch("os.path.exists")
 def test_upload_scan_target_path_validation(mock_exists, upload_service):
-    """Test that upload_scan_target validates path existence."""
+    """Test that upload_scan_target validates the target file exists."""
     mock_exists.return_value = False
 
-    with pytest.raises(FileSystemError, match="Path does not exist"):
+    with pytest.raises(
+        FileSystemError, match="Scan target file does not exist"
+    ):
         upload_service.upload_scan_target("scan1", "/nonexistent/path")
 
     mock_exists.assert_called_once_with("/nonexistent/path")
+
+
+@patch("os.path.exists")
+@patch("os.path.isfile")
+def test_upload_scan_target_rejects_directory(
+    mock_isfile, mock_exists, upload_service
+):
+    """upload_scan_target now requires a file (callers prep archives)."""
+    mock_exists.return_value = True
+    mock_isfile.return_value = False  # Path exists but is a directory
+
+    with pytest.raises(
+        FileSystemError, match="Scan target file does not exist"
+    ):
+        upload_service.upload_scan_target("scan1", "/path/to/directory")
+
+    mock_exists.assert_called_once_with("/path/to/directory")
+    mock_isfile.assert_called_once_with("/path/to/directory")
 
 
 @patch("os.path.exists")
