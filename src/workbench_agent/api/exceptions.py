@@ -150,13 +150,13 @@ class CompatibilityError(WorkbenchApiError):
 
     This includes:
     - SDK version incompatibility with Workbench server version
-    - Scan configuration incompatibility (e.g., reusing a Git scan for code upload)
+    - Scan incompatibility (e.g., reusing a Git scan for code upload)
     - Operation incompatibility with current state
 
     Examples:
         >>> # SDK version compatibility
         >>> raise CompatibilityError(
-        ...     "Workbench server version 24.2.0 is not compatible with this SDK. "
+        ...     "Workbench version 24.2.0 is not compatible with this SDK. "
         ...     "SDK requires Workbench 24.3.0 or later."
         ... )
         >>>
@@ -166,4 +166,3 @@ class CompatibilityError(WorkbenchApiError):
         ...     "reused for code upload operations."
         ... )
     """
-
