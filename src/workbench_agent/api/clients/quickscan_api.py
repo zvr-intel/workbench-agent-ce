@@ -13,14 +13,17 @@ logger = logging.getLogger("workbench-agent")
 
 class QuickScanClient:
     """
-    Quick Scan API client using composition pattern.
+    Quick Scan API client.
 
-    Handles quick scan operations for individual files without creating
-    a full scan in the Workbench system.
+    Scans individual files without creating a scan in Workbench.
 
     Example:
         >>> quick_scan = QuickScanClient(base_api)
-        >>> results = quick_scan.scan_one_file(file_content_b64, limit=1, sensitivity=10)
+        >>> results = quick_scan.scan_one_file(
+        ...     file_content_b64,
+        ...     limit=1,
+        ...     sensitivity=10
+        ... )
     """
 
     def __init__(self, base_api):
@@ -37,7 +40,7 @@ class QuickScanClient:
         self, file_content_b64: str, limit: int = 1, sensitivity: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Perform a quick scan of a single file using base64 content.
+        Perform a quick scan of a single file.
 
         Args:
             file_content_b64: Base64-encoded file content
@@ -50,13 +53,6 @@ class QuickScanClient:
         Raises:
             ApiError: If the API call fails or unexpected response received
 
-        Note:
-            **Response handling:**
-            - Older Workbench versions may return "classification" field (array)
-            - Newer Workbench versions return "noise" field (object)
-
-            This method normalizes the response to always use "noise" field
-            for consistency across versions.
         """
         logger.debug(
             "Initiating quick scan (limit=%s, sensitivity=%s)...",
@@ -107,13 +103,13 @@ class QuickScanClient:
             else:
                 continue
 
-            # Normalize legacy format: convert "classification" array to "noise" object
+            # Normalize legacy format: convert "classification" to "noise"
             if "classification" in result and "noise" not in result:
                 logger.debug(
                     "Normalizing legacy quick scan response "
                     "(classification → noise)"
                 )
-                # Convert legacy "classification" array to "noise" object
+                # Convert legacy "classification" to "noise"
                 result["noise"] = {
                     "classification": result.pop("classification")
                 }

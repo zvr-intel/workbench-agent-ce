@@ -1146,8 +1146,7 @@ class ScansClient:
         Generate a scan report.
 
         This method wraps the API's generate_report action.
-        Prefer using ReportService.generate_scan_report() which provides
-        validation, version awareness, and async/sync determination.
+        For most use cases use ReportService.generate_scan_report() instead.
 
         Args:
             payload_data: Pre-built payload data dictionary containing:
@@ -1173,7 +1172,6 @@ class ScansClient:
             ... }
             >>> process_id = scans.generate_report(payload_data)
             >>>
-            >>> # Recommended: Use ReportService instead
             >>> process_id = client.reports.generate_scan_report(
             ...     "scan_code", "xlsx"
             ... )
