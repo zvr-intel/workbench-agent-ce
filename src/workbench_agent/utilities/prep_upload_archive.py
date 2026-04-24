@@ -59,11 +59,10 @@ class UploadArchivePrep:
 
         # Check filename patterns (basic wildcard support)
         filename = path_obj.name
-        for pattern in exclusions:
-            if pattern.startswith("*") and filename.endswith(pattern[1:]):
-                return True
-
-        return False
+        return any(
+            pattern.startswith("*") and filename.endswith(pattern[1:])
+            for pattern in exclusions
+        )
 
     @staticmethod
     def validate_file_for_archive(file_path: str) -> bool:
@@ -77,7 +76,7 @@ class UploadArchivePrep:
             bool: True if file is safe to archive
         """
         try:
-            # Check if it's a regular file (not broken symlink, device file, etc.)
+            # Check if it's a file (not broken symlink, device file, etc.)
             if not os.path.isfile(file_path):
                 return False
 
@@ -109,7 +108,7 @@ class UploadArchivePrep:
         archive_name: Optional[str] = None,
     ) -> str:
         """
-        Creates a ZIP archive from a directory, suitable for upload to Workbench.
+        Creates a ZIP archive from a directory for upload to Workbench.
         Respects .gitignore patterns and excludes common development files.
 
         Args:
@@ -161,7 +160,7 @@ class UploadArchivePrep:
                 abs_path = os.path.abspath(source_path)
 
                 print(
-                    "Creating zip archive (excluding system files and respecting .gitignore)..."
+                    "Creating ZIP (respecting .gitignore)..."
                 )
 
                 for root, dirs, files in os.walk(abs_path):
@@ -239,7 +238,8 @@ class UploadArchivePrep:
                         ):
                             files_excluded += 1
                             logger.warning(
-                                f"Skipped invalid file: {rel_file_path} (type: {UploadArchivePrep._get_file_type_description(file_path)})"
+                                f"Skipped invalid file: {rel_file_path} "
+                                f"(type: {UploadArchivePrep._get_file_type_description(file_path)})"
                             )
                             continue
 
@@ -260,7 +260,7 @@ class UploadArchivePrep:
                             continue
 
                 print(
-                    f"Added {files_added} files to archive (excluded {files_excluded} files/directories)"
+                    f"{files_added} files archived, {files_excluded} excluded)"
                 )
 
             # Verify the archive was created successfully
@@ -308,7 +308,7 @@ class UploadArchivePrep:
             List[str]: List of gitignore patterns
         """
         gitignore_path = os.path.join(directory_path, ".gitignore")
-        patterns = []
+        patterns: List[str] = []
 
         if not os.path.exists(gitignore_path):
             return patterns
@@ -323,7 +323,7 @@ class UploadArchivePrep:
             logger.debug(
                 f"Parsed {len(patterns)} patterns from .gitignore"
             )
-        except (OSError, IOError, UnicodeDecodeError) as e:
+        except (OSError, UnicodeDecodeError) as e:
             logger.warning(f"Could not read .gitignore file: {e}")
 
         return patterns
@@ -360,7 +360,7 @@ class UploadArchivePrep:
         path: str, gitignore_patterns: List[str], is_dir: bool = False
     ) -> bool:
         """
-        Checks if a path should be excluded based on gitignore patterns.
+        Checks if a path should be excluded based on gitignore.
 
         Args:
             path: Relative path from project root

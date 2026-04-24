@@ -1,11 +1,7 @@
 # tests/unit/utilities/test_sbom_validator.py
 
-import importlib
 import json
 import os
-import sys
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -141,17 +137,6 @@ class TestFormatDetection:
 class TestCycloneDXValidationErrors:
     """Test cases for CycloneDX validation error conditions."""
 
-    @patch.dict(
-        sys.modules,
-        {"cyclonedx.validation": None, "cyclonedx.schema": None},
-    )
-    def test_validate_cyclonedx_missing_library(self):
-        """Test validation fails when CycloneDX library is missing."""
-        with pytest.raises(
-            ValidationError, match="CycloneDX library not available"
-        ):
-            SBOMValidator._validate_cyclonedx("/path/to/file.json")
-
     def test_validate_cyclonedx_invalid_format(self):
         """Test CycloneDX validation fails for invalid format."""
         invalid_json = {"bomFormat": "InvalidFormat", "specVersion": "1.6"}
@@ -161,7 +146,7 @@ class TestCycloneDXValidationErrors:
         with patch("builtins.open", mock_open(read_data=json_content)):
             with pytest.raises(
                 ValidationError,
-                match="does not appear to be a CycloneDX BOM",
+                match="does not appear to be a CycloneDX SBOM",
             ):
                 SBOMValidator._validate_cyclonedx("/path/to/file.json")
 
@@ -203,10 +188,10 @@ class TestCycloneDXValidationErrors:
 
         with patch("builtins.open", mock_open(read_data=json_content)):
             with patch(
-                "cyclonedx.validation.json.JsonStrictValidator"
+                "workbench_agent.utilities.sbom_validator.JsonStrictValidator"
             ) as mock_validator_class:
                 mock_validator = MagicMock()
-                mock_validator.validate_str.return_value = []
+                mock_validator.validate_str.return_value = None
                 mock_validator_class.return_value = mock_validator
 
                 with pytest.raises(
@@ -225,12 +210,12 @@ class TestCycloneDXValidationErrors:
         json_content = json.dumps(valid_cyclonedx)
         with patch("builtins.open", mock_open(read_data=json_content)):
             with patch(
-                "cyclonedx.validation.json.JsonStrictValidator"
+                "workbench_agent.utilities.sbom_validator.JsonStrictValidator"
             ) as mock_validator_class:
                 mock_validator = MagicMock()
-                mock_validator.validate_str.return_value = [
-                    MagicMock(message="Validation Error")
-                ]
+                mock_validator.validate_str.return_value = iter(
+                    [MagicMock(message="Validation Error")]
+                )
                 mock_validator_class.return_value = mock_validator
                 with pytest.raises(
                     ValidationError, match="CycloneDX validation failed"
@@ -258,16 +243,6 @@ class TestCycloneDXValidationErrors:
 
 class TestSPDXValidationErrors:
     """Test cases for SPDX validation error conditions."""
-
-    @patch.dict(
-        sys.modules, {"spdx_tools.spdx.parser.parse_anything": None}
-    )
-    def test_validate_spdx_missing_library(self):
-        """Test validation fails when SPDX library is missing."""
-        with pytest.raises(
-            ValidationError, match="SPDX tools library not available"
-        ):
-            SBOMValidator._validate_spdx("/path/to/file.rdf")
 
     @patch(
         "workbench_agent.utilities.sbom_validator.SBOMValidator._validate_spdx"

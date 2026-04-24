@@ -25,8 +25,8 @@ def fetch_results(
     """
     Fetches requested scan results based on --show-* flags.
 
-    This function delegates to ResultsService.fetch_results() which orchestrates
-    fetching multiple result types. It handles errors gracefully, allowing partial
+    This delegates to ResultsService.fetch_results() for
+    fetching multiple result types. It allows partial
     results to be returned even if some fetches fail.
 
     Args:
@@ -69,7 +69,7 @@ def fetch_results(
         )
         return {}
 
-    # Delegate to ResultsService.fetch_results() which handles all the fetching logic
+    # Delegate to ResultsService.fetch_results()
     return workbench.results.fetch_results(scan_code, params)
 
 
@@ -77,7 +77,7 @@ def display_results(
     collected_results: Dict[str, Any], params: argparse.Namespace
 ) -> bool:
     """
-    Displays scan results based on the collected data and user preferences.
+    Displays results based on the collected data.
     """
     should_fetch_licenses = getattr(params, "show_licenses", False)
     should_fetch_components = getattr(params, "show_components", False)
@@ -203,7 +203,7 @@ def display_results(
                         TypeError,
                     ) as scope_err:
                         logger.debug(
-                            f"Could not parse scopes for DA component {comp.get('name')}: {scope_err}"
+                            f"Could not parse scope for {comp.get('name')}: {scope_err}"
                         )
                 print(
                     f"  - {comp.get('name', 'N/A')} : {comp.get('version', 'N/A')} "
@@ -241,7 +241,7 @@ def display_results(
                 print("No policy warnings found.")
         else:
             print(
-                "Policy warnings counter data could not be fetched or was empty."
+                "Policy warnings counter could not be fetched."
             )
         print("-" * 25)
 
@@ -271,7 +271,7 @@ def display_results(
 
             num_unique_components = len(unique_components)
             print(
-                f"There are {num_cves} vulnerabilities affecting {num_unique_components} components."
+                f"{num_cves} CVEs affect {num_unique_components} components."
             )
             print(
                 f"By CVSS Score, "
@@ -305,7 +305,7 @@ def display_results(
                 reverse=True,
             )
 
-            # Define severity order for sorting vulnerabilities within each component
+            # Define severity order for sorting vulnerabilities
             severity_order = {
                 "CRITICAL": 4,
                 "HIGH": 3,
@@ -339,7 +339,7 @@ def display_results(
 
     if not displayed_something:
         print(
-            "No results were successfully fetched or displayed for the specified flags."
+            "No results were successfully fetched."
         )
     print("------------------------------------")
 
@@ -397,4 +397,3 @@ def fetch_display_save_results(
             print(
                 "\nNo results were successfully collected, skipping save."
             )
-

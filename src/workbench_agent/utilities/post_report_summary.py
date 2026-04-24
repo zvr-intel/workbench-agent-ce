@@ -25,50 +25,49 @@ def _format_report_parameters(
 ) -> str:
     """
     Format report parameters based on report type capabilities.
-    
     Shows all applicable parameters for the report type, including
     default values when parameters are not explicitly provided.
-    
+
     Returns a formatted string showing which parameters were used.
     """
     capabilities = (
         workbench.reports.REPORT_DEFS.get(report_type) or {}
     ).get("capabilities") or {}
-    
+
     param_parts = []
-    
+
     # Selection Type - defaults to "include_all_licenses" if not specified
     if capabilities.get("supports_selection_type"):
         if params.selection_type:
             param_parts.append(f"Selection Type: {params.selection_type}")
         else:
             param_parts.append("Selection Type: include_all_licenses")
-    
+
     # Selection View - defaults to "all" if not specified
     if capabilities.get("supports_selection_view"):
         if params.selection_view:
             param_parts.append(f"Selection View: {params.selection_view}")
         else:
             param_parts.append("Selection View: all")
-    
+
     # VEX - defaults to true if not set (for supported report types)
     if capabilities.get("supports_vex"):
         include_vex = getattr(params, "include_vex", True)
         param_parts.append(f"VEX: {'Yes' if include_vex else 'No'}")
-    
+
     # Disclaimer - no default, only show if provided
     if capabilities.get("supports_disclaimer"):
         if params.disclaimer:
             param_parts.append("Disclaimer: Yes")
         # Don't show disclaimer if not provided (it's truly optional)
-    
+
     # Include Dep Det Info - defaults to false if not set (for Excel reports)
     if capabilities.get("supports_dep_det_info"):
         include_dep_det_info = getattr(params, "include_dep_det_info", False)
         param_parts.append(
             f"Dependency Details: {'Yes' if include_dep_det_info else 'No'}"
         )
-    
+
     if param_parts:
         return " (" + ", ".join(param_parts) + ")"
     return ""
@@ -82,17 +81,15 @@ def print_report_summary(
     error_count: int,
     error_types: list,
     scan_code: Optional[str] = None,
-    project_code: Optional[str] = None,
     show_summary: bool = False,
 ):
     """
     Post-report summary for download-reports command.
-    
-    When show_summary is True, shows comprehensive report generation details
-    including report types, parameters, and results. When False, only shows
-    the Workbench link (for scan-scope reports). The link is always displayed
-    for scan-scope reports.
-    
+
+    When show_summary is True, show report generation details
+    including types, parameters, and results. When False, only show
+    the Workbench link (for scan-scope reports).
+
     Args:
         workbench: WorkbenchClient instance
         params: Command line parameters
@@ -101,19 +98,18 @@ def print_report_summary(
         error_count: Number of failed reports
         error_types: List of report types that failed
         scan_code: Scan code (for scan-scope reports)
-        project_code: Project code (for project-scope reports)
-        show_summary: Whether to show the full summary (True) or just the link (False)
+        show_summary: Whether to show a summary (True) or just a link (False)
     """
-    
+
     # Only show detailed summary if requested
     if not show_summary:
         # For scan-scope reports, show Workbench link
         if params.report_scope == "scan" and scan_code:
             _print_workbench_link(workbench, scan_code)
         return
-    
+
     print("\n--- Post-Report Summary ---")
-    
+
     # Report Scope
     scope_label = (
         "Project" if params.report_scope == "project" else "Scan"
@@ -124,35 +120,34 @@ def print_report_summary(
         else params.scan_name
     )
     print(f"\nReport Scope: {scope_label} '{scope_name}'")
-    
+
     # Output Directory
     output_dir = getattr(params, "report_save_path", ".")
     print(f"Output Directory: {output_dir}")
-    
+
     # Report Generation Summary
     print("\nReport Generation Summary:")
     print(f"  - Total Reports Requested: {len(report_types)}")
     print(f"  - Successfully Generated: {success_count}")
     if error_count > 0:
         print(f"  - Failed: {error_count}")
-    
+
     # Report Types and Parameters
     print("\nReport Types Generated:")
     for report_type in sorted(report_types):
         status = "✓" if report_type not in error_types else "✗"
         param_str = _format_report_parameters(workbench, report_type, params)
-        
+
         print(f"  {status} {report_type}{param_str}")
-    
+
     # Show failed report types if any
     if error_types:
         print("\nFailed Report Types:")
         for error_type in error_types:
             print(f"  - {error_type}")
-    
+
     print("------------------------------------")
-    
+
     # Always show Workbench link for scan-scope reports
     if params.report_scope == "scan" and scan_code:
         _print_workbench_link(workbench, scan_code)
-

@@ -27,7 +27,7 @@ def _determine_scans_to_run(
     params: argparse.Namespace,
 ) -> Dict[str, bool]:
     """
-    Decide which scan processes to run based on CLI parameters.
+    Decide which scans to run based on CLI parameters.
 
     Returns a dict with keys ``run_kb_scan`` and
     ``run_dependency_analysis``.
@@ -43,8 +43,8 @@ def _determine_scans_to_run(
         "run_dependency_analysis": False,
     }
     if run_dependency_analysis and dependency_analysis_only:
-        print(
-            "\nWARNING: Both --dependency-analysis-only and "
+        logger.warning(
+            "\nBoth --dependency-analysis-only and "
             "--run-dependency-analysis were specified. "
             "Using --dependency-analysis-only mode (skipping KB scan)."
         )

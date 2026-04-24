@@ -463,43 +463,39 @@ def evaluate_gates_pre_flight_check(
     """
     print("\nEnsuring Scans are Complete...")
 
-    try:
-        # Check if scan is active
-        scan_status = client.status_check.check_scan_status(scan_code)
-        if scan_status.is_active:
-            print(
-                "KB Scan is still in progress, "
-                "waiting for it to complete..."
-            )
-            client.status_check.check_scan_status(
-                scan_code,
-                wait=True,
-                wait_retry_count=params.scan_number_of_tries,
-                wait_retry_interval=params.scan_wait_time,
-            )
-
-        # Check if DA is active
-        da_status = client.status_check.check_dependency_analysis_status(
-            scan_code
+    # Errors propagate to the caller; the gates handler is responsible
+    # for translating them into the right exit status.
+    scan_status = client.status_check.check_scan_status(scan_code)
+    if scan_status.is_active:
+        print(
+            "KB Scan is still in progress, "
+            "waiting for it to complete..."
         )
-        if da_status.is_active:
-            print(
-                "Dependency Analysis is still in progress, "
-                "waiting for it to complete..."
-            )
-            client.status_check.check_dependency_analysis_status(
-                scan_code,
-                wait=True,
-                wait_retry_count=params.scan_number_of_tries,
-                wait_retry_interval=params.scan_wait_time,
-            )
-
-        logger.info(
-            "Verified all Scan processes are idle. Checking gates..."
+        client.status_check.check_scan_status(
+            scan_code,
+            wait=True,
+            wait_retry_count=params.scan_number_of_tries,
+            wait_retry_interval=params.scan_wait_time,
         )
-    except Exception as e:
-        # Re-raise to let handler handle the error appropriately
-        raise
+
+    da_status = client.status_check.check_dependency_analysis_status(
+        scan_code
+    )
+    if da_status.is_active:
+        print(
+            "Dependency Analysis is still in progress, "
+            "waiting for it to complete..."
+        )
+        client.status_check.check_dependency_analysis_status(
+            scan_code,
+            wait=True,
+            wait_retry_count=params.scan_number_of_tries,
+            wait_retry_interval=params.scan_wait_time,
+        )
+
+    logger.info(
+        "Verified all scans are idle. Checking gates..."
+    )
 
 
 def download_reports_pre_flight_check(
@@ -510,9 +506,8 @@ def download_reports_pre_flight_check(
     """
     Performs pre-flight checks for the download-reports handler.
 
-    Ensures that scan processes are complete before generating reports.
-    This is a read-only operation, so it always checks (no scan_is_new
-    parameter needed). Only applies to scan-scope reports.
+    Ensures that scans are complete before generating reports.
+    Only applies to scan-scope reports.
 
     Checks for:
     - KB scan operations
