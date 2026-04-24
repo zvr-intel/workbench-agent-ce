@@ -1,8 +1,7 @@
 """
 Error handling utilities for the Workbench Agent.
 
-This module contains functions for standardized error handling and formatting
-across all CLI handlers.
+This module contains functions that standardize error handling across handlers.
 """
 
 import argparse
@@ -63,7 +62,7 @@ def format_and_print_error(
     is_read_only = command in read_only_commands
 
     # Add context-specific help based on error type
-    # Note: Check AuthenticationError before ApiError since AuthenticationError inherits from ApiError
+    # Note: Check AuthenticationError before ApiError
     if isinstance(error, AuthenticationError):
         print("\n❌ Authentication failed")
         print(f"   {error_message}")
@@ -77,7 +76,7 @@ def format_and_print_error(
                 "\n❌ Cannot continue: The requested project does not exist"
             )
             print(
-                f"   Project '{getattr(params, 'project_name', 'unknown')}' was not found in your Workbench instance."
+                f"   Project '{getattr(params, 'project_name', 'unknown')}' not found."
             )
             print("\n💡 Please check:")
             print("   • The project name is spelled correctly")
@@ -88,7 +87,7 @@ def format_and_print_error(
                 f"\n❌ Error executing '{command}' command: {error_message}"
             )
             print(
-                f"  → Project '{getattr(params, 'project_name', 'unknown')}' was not found"
+                f"  → Project '{getattr(params, 'project_name', 'unknown')}' not found"
             )
 
     elif isinstance(error, ScanNotFoundError):
@@ -105,7 +104,7 @@ def format_and_print_error(
                 )
             else:
                 print(
-                    f"   Scan '{scan_name}' was not found in your Workbench instance."
+                    f"   Scan '{scan_name}' was not found in Workbench."
                 )
 
             print("\n💡 Please check:")
@@ -304,19 +303,11 @@ def handler_error_wrapper(handler_func: Callable) -> Callable:
             return handler_func(workbench, params)
 
         except (
-            AuthenticationError,  # Before ApiError (inherits from ApiError)
-            ProjectNotFoundError,  # Before ApiError (inherits from NotFoundError → ApiError)
-            ScanNotFoundError,  # Before ApiError (inherits from NotFoundError → ApiError)
-            ProcessTimeoutError,  # Before ProcessError (inherits from ProcessError)
-            # Now the base classes and independent exceptions
-            ValidationError,
-            ConfigurationError,
-            FileSystemError,
-            CompatibilityError,
-            ApiError,
+            ApiError,  # Covers AuthenticationError, ProjectNotFoundError, ScanNotFoundError
             NetworkError,
-            ProcessError,
-            WorkbenchAgentError,
+            ProcessError,  # Covers ProcessTimeoutError
+            CompatibilityError,
+            WorkbenchAgentError,  # Covers ValidationError, ConfigurationError, FileSystemError
         ) as e:
             # Expected exceptions - log and re-raise for main.py to format
             logger.debug(

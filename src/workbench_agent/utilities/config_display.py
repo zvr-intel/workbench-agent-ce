@@ -1,8 +1,8 @@
 """
 Configuration display utilities for the Workbench Agent.
 
-This module provides functions for displaying startup configuration information
-in a well-organized format, including agent settings, operation parameters,
+This module provides functions for displaying startup configuration
+in a organized format, including agent settings, operation parameters,
 result display options, and connection information.
 """
 
