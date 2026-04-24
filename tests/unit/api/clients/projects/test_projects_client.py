@@ -10,9 +10,6 @@ import requests
 from workbench_agent.api.clients.projects_api import ProjectsClient
 from workbench_agent.api.exceptions import (
     ApiError,
-    ProjectExistsError,
-    ProjectNotFoundError,
-    ScanNotFoundError,
 )
 from workbench_agent.api.helpers.base_api import BaseAPI
 

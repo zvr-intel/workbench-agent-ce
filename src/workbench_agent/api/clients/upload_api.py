@@ -1,14 +1,12 @@
 """
-UploadsClient - Handles low-level file upload operations to Workbench.
+UploadsClient - Handles file upload operations to Workbench.
 
 This client provides:
 - Low-level file upload operations (upload_file)
 - Chunked upload support with progress tracking
-- Standard upload support
 
-The client handles the actual HTTP communication with the Workbench API.
-Business logic (preparing files, setting headers based on context) is handled
-by UploadService in the services layer.
+The client handles HTTP communication with the Workbench API.
+Business logic is handled by UploadService in the services layer.
 
 Example:
         >>> uploads = UploadsClient(base_api)
@@ -54,7 +52,7 @@ class UploadsClient:
     """
 
     # Upload Constants (HTTP implementation details)
-    CHUNK_SIZE = 7 * 1024 * 1024  # 5MB
+    CHUNK_SIZE = 7 * 1024 * 1024  # 7MB
     MAX_CHUNK_RETRIES = 3
     PROGRESS_UPDATE_INTERVAL = 20  # Percent
     SMALL_FILE_CHUNK_THRESHOLD = 5  # Always show progress for ≤5 chunks
@@ -75,9 +73,9 @@ class UploadsClient:
         """
         Upload a file using standard (non-chunked) HTTP POST.
 
-        This is the low-level upload method for standard uploads. Business logic
-        (deciding when to use chunked vs standard, preparing files, setting headers)
-        should be handled by the service layer.
+        This is the upload method for standard uploads.
+        Business logic (chunked vs standard, file prep, headers)
+        are handled in the service layer.
 
         Args:
             file_path: Path to the file to upload
@@ -104,7 +102,7 @@ class UploadsClient:
         file_size = os.path.getsize(file_path)
 
         logger.debug(
-            f"Starting standard upload for file: {filename} ({file_size / (1024 * 1024):.2f} MB)"
+            f"Uploading {filename} ({file_size / (1024 * 1024):.2f} MB)"
         )
 
         try:
@@ -161,9 +159,9 @@ class UploadsClient:
         """
         Upload a file using chunked HTTP POST.
 
-        This is the low-level upload method for chunked uploads. Business logic
-        (deciding when to use chunked vs standard, preparing files, setting headers)
-        should be handled by the service layer.
+        This is the upload method for chunked uploads.
+        Business logic (chunked vs standard, file prep, headers)
+        are handled in the service layer.
 
         Args:
             file_path: Path to the file to upload

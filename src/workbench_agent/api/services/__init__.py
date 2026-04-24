@@ -14,7 +14,6 @@ from .scan_operations_service import ScanOperationsService
 from .status_check_service import StatusCheckService
 from .upload_service import UploadService
 from .user_permissions import UserPermissionsService
-from .waiting_service import WaitingService
 
 __all__ = [
     "QuickScanService",
@@ -27,5 +26,4 @@ __all__ = [
     "StatusCheckService",
     "UploadService",
     "UserPermissionsService",
-    "WaitingService",
 ]

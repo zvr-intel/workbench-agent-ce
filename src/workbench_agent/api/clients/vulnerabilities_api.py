@@ -12,7 +12,7 @@ logger = logging.getLogger("workbench-agent")
 
 class VulnerabilitiesClient:
     """
-    Vulnerabilities API client using composition pattern.
+    Vulnerabilities API client.
 
     Handles vulnerability-related operations including:
     - Listing vulnerabilities for a scan (with automatic pagination)

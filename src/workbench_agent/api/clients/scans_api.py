@@ -15,7 +15,6 @@ import requests
 
 from workbench_agent.api.exceptions import (
     ApiError,
-    ScanExistsError,
     ScanNotFoundError,
 )
 
@@ -46,7 +45,7 @@ class ScansClient:
 
     def list_scans(self) -> List[Dict[str, Any]]:
         """
-        Retrieves a list of all scans.
+        Retrieves a list of all scans in Workbench - HEAVY operation.
 
         Returns:
             List[Dict[str, Any]]: List of scan data
@@ -147,7 +146,7 @@ class ScansClient:
 
     def get_scan_folder_metrics(self, scan_code: str) -> Dict[str, Any]:
         """
-        Retrieves scan folder metrics (total files, pending, identified, no match).
+        Retrieves scan file metrics (total, pending, identified, no match).
 
         Args:
             scan_code: Code of the scan to get metrics for
@@ -493,42 +492,29 @@ class ScansClient:
         Raises:
             ApiError: If the API call fails
             NetworkError: If there's a network issue
-            ScanExistsError: If a scan with this name already exists
         """
         scan_name = data.get("scan_name", "unknown")
         logger.debug(f"Creating scan '{scan_name}' via API")
 
         payload = {"group": "scans", "action": "create", "data": data}
 
-        try:
-            response = self._api._send_request(payload)
-            if response.get("status") == "1" and "data" in response:
-                scan_id = response["data"].get("scan_id")
-                if scan_id is None:
-                    raise ApiError(
-                        f"Scan created but no scan_id returned for '{scan_name}'",
-                        details=response,
-                    )
-                logger.debug(
-                    f"Successfully created scan '{scan_name}' with ID {scan_id}"
-                )
-                return int(scan_id)
-            else:
-                error_msg = response.get("error", "Unknown error")
+        response = self._api._send_request(payload)
+        if response.get("status") == "1" and "data" in response:
+            scan_id = response["data"].get("scan_id")
+            if scan_id is None:
                 raise ApiError(
-                    f"Failed to create scan '{scan_name}': {error_msg}",
+                    f"Scan created but no scan_id returned for '{scan_name}'",
                     details=response,
                 )
-        except ApiError as e:
-            if "Scan code already exists" in str(
-                e
-            ) or "code_already_exists" in str(e):
-                logger.debug(f"Scan '{scan_name}' already exists.")
-                raise ScanExistsError(
-                    f"Scan '{scan_name}' already exists",
-                    details=getattr(e, "details", None),
-                ) from e
-            raise
+            logger.debug(
+                f"Successfully created scan '{scan_name}' with ID {scan_id}"
+            )
+            return int(scan_id)
+        error_msg = response.get("error", "Unknown error")
+        raise ApiError(
+            f"Failed to create scan '{scan_name}': {error_msg}",
+            details=response,
+        )
 
     def update(
         self,
@@ -1046,8 +1032,7 @@ class ScansClient:
 
         Args:
             scan_code: Code of the scan to check. Use ``None`` to omit (only
-                for operations identified by ``process_id``, e.g. ``DELETE_SCAN``
-                after the scan row may no longer exist).
+                for operations polled by ``process_id``, e.g. ``DELETE_SCAN``).
             process_type: Type of process (SCAN, DEPENDENCY_ANALYSIS,
                 EXTRACT_ARCHIVES, REPORT_IMPORT, DELETE_SCAN, etc.)
             process_id: Optional process ID (e.g. async report or delete scan)
@@ -1058,7 +1043,7 @@ class ScansClient:
         Raises:
             ScanNotFoundError: If scan doesn't exist
             ApiError: If status check fails
-            ValueError: If ``scan_code`` is omitted but ``process_id`` is missing
+            ValueError: If `scan_code` omitted and `process_id` missing
 
         Example:
             >>> status = scans.check_status("scan_123", "SCAN")
@@ -1158,12 +1143,11 @@ class ScansClient:
 
     def generate_report(self, payload_data: Dict[str, Any]):
         """
-        Generate a scan report using pre-built payload.
+        Generate a scan report.
 
-        This method directly wraps the API's generate_report action.
-        For most use cases, prefer using
-        ReportService.generate_scan_report() which provides validation,
-        version awareness, and automatic async/sync determination.
+        This method wraps the API's generate_report action.
+        Prefer using ReportService.generate_scan_report() which provides
+        validation, version awareness, and async/sync determination.
 
         Args:
             payload_data: Pre-built payload data dictionary containing:

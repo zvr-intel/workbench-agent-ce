@@ -328,7 +328,6 @@ class ResolverService:
             str: Project code of the created project
 
         Raises:
-            ProjectExistsError: If project already exists
             ApiError: If creation fails
         """
         logger.debug(f"Creating project '{project_name}'...")
@@ -439,7 +438,7 @@ class ResolverService:
         self, scan_code: str, operation: str, params: argparse.Namespace
     ) -> None:
         """
-        Validate that a scan is compatible with the requested operation.
+        Validates a scan is compatible with the requested operation.
 
         This is part of the "resolution" process - ensuring the resolved
         scan resource is actually usable for the intended purpose.

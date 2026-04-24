@@ -3,18 +3,7 @@
 import sys
 from unittest.mock import mock_open, patch
 
-from workbench_agent.api.utils.process_waiter import StatusResult
 from workbench_agent.main import main
-
-
-def _finished_report_wait_result() -> StatusResult:
-    """StatusResult used when mocking async / notice report completion."""
-    return StatusResult(
-        status="FINISHED",
-        raw_data={"status": "FINISHED"},
-        duration=5.0,
-        success=True,
-    )
 
 
 class TestDownloadReportsIntegration:
@@ -39,9 +28,6 @@ class TestDownloadReportsIntegration:
         )
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
-        )
-        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = (
-            _finished_report_wait_result()
         )
 
         # Mock file operations
@@ -109,9 +95,6 @@ class TestDownloadReportsIntegration:
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
         )
-        mock_workbench_api.waiting.wait_for_scan_report_completion.return_value = (
-            _finished_report_wait_result()
-        )
 
         # Mock file operations
         with (
@@ -170,9 +153,6 @@ class TestDownloadReportsIntegration:
         )
         mock_workbench_api.reports.save_report.return_value = str(
             report_dir / "report.rdf"
-        )
-        mock_workbench_api.waiting.wait_for_project_report_completion.return_value = (
-            _finished_report_wait_result()
         )
 
         # Mock file operations

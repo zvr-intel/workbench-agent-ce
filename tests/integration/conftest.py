@@ -376,7 +376,6 @@ def mock_workbench_api(mocker):
     # Import dataclasses for return values
     from workbench_agent.api.utils.process_waiter import (
         StatusResult,
-        WaitResult,
     )
 
     # Create a mock instance of WorkbenchClient
@@ -476,27 +475,6 @@ def mock_workbench_api(mocker):
 
     mock_client.quick_scan_service = MagicMock()
     mock_client.quick_scan_service.scan_one_file.return_value = []
-
-    # --- Mock Waiting Service (deprecated, uses StatusResult now) ---
-    mock_client.waiting = MagicMock()
-    mock_client.waiting.wait_for_git_clone.return_value = StatusResult(
-        status="FINISHED",
-        raw_data={"status": "FINISHED", "is_finished": "1"},
-        duration=2.0,
-        success=True,
-    )
-    mock_client.waiting.wait_for_scan.return_value = StatusResult(
-        status="FINISHED",
-        raw_data={"status": "FINISHED", "is_finished": "1"},
-        duration=10.0,
-        success=True,
-    )
-    mock_client.waiting.wait_for_da.return_value = StatusResult(
-        status="FINISHED",
-        raw_data={"status": "FINISHED", "is_finished": "1"},
-        duration=5.0,
-        success=True,
-    )
 
     # --- Mock Scan Operations Service ---
     mock_client.scan_operations = MagicMock()

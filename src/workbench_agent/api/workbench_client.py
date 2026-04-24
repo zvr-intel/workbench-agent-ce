@@ -1,42 +1,8 @@
 """
-WorkbenchClient - Main API client using composition pattern.
+WorkbenchClient - Main API client for FossID Workbench.
 
-This is the primary API client for interacting with FossID Workbench.
-It uses composition to organize functionality into domain-specific clients
-and orchestration services.
+Functionality is organized into domain-specific clients and services.
 
-Usage:
-    >>> from workbench_agent.api.workbench_client import (
-    ...     WorkbenchClient
-    ... )
-    >>>
-    >>> # Initialize client
-    >>> workbench = WorkbenchClient(
-    ...     api_url="https://workbench.example.com/api.php",
-    ...     api_user="username",
-    ...     api_token="token"
-    ... )
-    >>>
-    >>> # Prefer services from handlers / application code
-    >>> workbench.upload_service.upload_scan_target(
-    ...     scan_code, "/path/to/source"
-    ... )
-    >>> # Domain clients remain available for direct API access
-    >>> projects = workbench.projects.list_projects()
-    >>> scan_info = workbench.scans.get_information(scan_code)
-    >>>
-    >>> # Use services for high-level orchestration
-    >>> p_code, s_code, is_new = (
-    ...     workbench.resolver.find_or_create_project_and_scan(
-    ...         "MyProject", "MyScan", params
-    ...     )
-    ... )
-    >>> workbench.scan_operations.start_scan(
-    ...     scan_code, limit=10, sensitivity=6
-    ... )
-    >>> process_id = workbench.reports.generate_project_report(
-    ...     project_code, "xlsx"
-    ... )
 """
 
 import logging
@@ -67,7 +33,6 @@ from workbench_agent.api.services import (
     StatusCheckService,
     UploadService,
     UserPermissionsService,
-    WaitingService,
 )
 
 logger = logging.getLogger("workbench-agent")
@@ -75,8 +40,8 @@ logger = logging.getLogger("workbench-agent")
 
 class WorkbenchClient:
     """
-    Main Workbench API client providing access to Workbench
-    functionality through domain-specific clients and services:
+    Main Workbench API client provides Workbench
+    functionality through clients and services:
 
     **Clients (Direct API operations):**
     - `projects`: Project management (list, create, update, reports)
@@ -99,7 +64,6 @@ class WorkbenchClient:
     - `user_permissions`: Check Workbench permissions for the API user
     - `upload_service`: File upload operations
     - `quick_scan_service`: Quick single-file scan
-    - `waiting`: Convenient waiting methods for async operations
 
     Example:
         >>> workbench = WorkbenchClient(api_url, api_user, api_token)
@@ -121,9 +85,6 @@ class WorkbenchClient:
         >>> workbench.scan_operations.start_scan(
         ...     scan_code, limit=10, sensitivity=6
         ... )
-        >>>
-        >>> # Wait for operations to complete
-        >>> result = workbench.waiting.wait_for_scan(scan_code)
 
     Note:
         This client is designed for a specific Workbench version range.
@@ -138,11 +99,8 @@ class WorkbenchClient:
         api_token: str,
     ):
         """
-        Initialize WorkbenchClient with composition-based architecture.
-
-        The client automatically checks Workbench server version compatibility
-        on initialization. The SDK version should correspond to the Workbench
-        API version it supports.
+        Initialize WorkbenchClient. The client checks Workbench server
+        version on initialization to determine compatibility.
 
         Args:
             api_url: URL to the Workbench API endpoint
@@ -151,7 +109,7 @@ class WorkbenchClient:
             api_token: API authentication token
 
         Raises:
-            CompatibilityError: If Workbench version doesn't match SDK expectations
+            CompatibilityError: If Workbench version doesn't match expectations
 
         Example:
             >>> # SDK checks server compatibility automatically
@@ -161,7 +119,7 @@ class WorkbenchClient:
             ...     api_token="my_api_token"
             ... )
         """
-        logger.info("Initializing WorkbenchClient (composition-based)")
+        logger.info("Initializing WorkbenchClient")
 
         # Core infrastructure - BaseAPI handles all HTTP communication
         self._base_api = BaseAPI(api_url, api_user, api_token)
@@ -188,11 +146,11 @@ class WorkbenchClient:
         self.quick_scan = QuickScanClient(self._base_api)
         self.users = UsersClient(self._base_api)
 
-        logger.debug("API clients initialized successfully")
+        logger.debug("API clients initialized.")
 
         # Initialize orchestration services
         # Services coordinate multiple clients for complex workflows
-        logger.debug("Initializing orchestration services...")
+        logger.debug("Initializing Services...")
 
         self.resolver = ResolverService(
             projects_client=self.projects, scans_client=self.scans
@@ -234,10 +192,6 @@ class WorkbenchClient:
             status_check_service=self.status_check,
         )
 
-        self.waiting = WaitingService(
-            status_check_service=self.status_check
-        )
-
         self.upload_service = UploadService(uploads_client=self.uploads)
 
         self.user_permissions = UserPermissionsService(
@@ -246,34 +200,27 @@ class WorkbenchClient:
             api_user=self._base_api.api_user,
         )
 
-        logger.debug("Orchestration services initialized successfully")
-        logger.info("WorkbenchClient initialization complete")
+        logger.debug("Services initialized.")
+        logger.info("WorkbenchClient initialization complete!")
 
     # ===== PRIVATE METHODS =====
 
     def _check_version_compatibility(self) -> None:
         """
-        Check that the Workbench server version is compatible with this SDK.
-
-        This SDK version corresponds to Workbench API version and validates
-        that the connected server is compatible.
+        Check that the Workbench version is compatible with this SDK.
 
         Raises:
             CompatibilityError: If Workbench version is incompatible
             ApiError: If version detection fails
             NetworkError: If connection fails
 
-        Note:
-            SDK versioning should match Workbench versioning. For example:
-            - workbench-sdk 24.3.x → Workbench 24.3.x
-            - workbench-sdk 25.1.x → Workbench 25.1.x
         """
         # This SDK version's minimum compatible Workbench version
         MINIMUM_VERSION = "24.3.0"
 
         try:
             logger.info(
-                "Checking Workbench server version compatibility..."
+                "Checking Workbench version compatibility..."
             )
             config_data = self.internal.get_config()
             workbench_version = config_data.get("version", "Unknown")
@@ -287,7 +234,7 @@ class WorkbenchClient:
                 )
 
             logger.debug(
-                f"Detected Workbench server version: {workbench_version}"
+                f"Detected Workbench version: {workbench_version}"
             )
 
             # Parse and compare versions
@@ -322,11 +269,11 @@ class WorkbenchClient:
 
                 logger.info(
                     f"Version compatibility check passed: "
-                    f"Server {workbench_version} >= SDK minimum {MINIMUM_VERSION}"
+                    f"Server {workbench_version} >= minimum {MINIMUM_VERSION}"
                 )
 
             except packaging_version.InvalidVersion as e:
-                # If version string can't be parsed, log warning but allow connection
+                # If version string can't be parsed, log warning but continue
                 logger.warning(
                     f"Could not parse Workbench version "
                     f"'{workbench_version}': {e}. "
@@ -377,11 +324,10 @@ class WorkbenchClient:
 
     def get_workbench_version(self) -> str:
         """
-        Get the normalized Workbench server version.
+        Get the Workbench server version.
 
         Returns the MAJOR.MINOR.PATCH version cached during initialization
-        (e.g. ``"2026.1.0"``).  Falls back to a fresh API call if the
-        cache is empty.
+        (e.g. ``"2026.1.0"``).  Falls back to a fresh call if cache is empty.
 
         Returns:
             Normalized version string (e.g., "2026.1.0", "2025.2.0")
@@ -414,8 +360,7 @@ class WorkbenchClient:
         """
         Get the underlying requests.Session object.
 
-        This is exposed primarily for testing purposes to allow mocking
-        of HTTP requests.
+        This is exposed primarily for testing to allow mocking HTTP requests.
 
         Returns:
             The requests.Session instance for HTTP communication

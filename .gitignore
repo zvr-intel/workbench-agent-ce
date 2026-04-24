@@ -24,6 +24,7 @@ workbench-agent-log.txt
 .env-*
 src/workbench_agent.egg-info/
 build
+reports/
 
 # Coverage
 .coverage*

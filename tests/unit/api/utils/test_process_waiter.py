@@ -11,7 +11,6 @@ from workbench_agent.api.exceptions import (
 )
 from workbench_agent.api.utils.process_waiter import (
     StatusResult,
-    WaitResult,
     extract_server_duration,
     wait_for_completion,
 )
@@ -114,11 +113,6 @@ def test_status_result_with_duration():
     assert result.status == "FINISHED"
     assert result.duration == 45.2
     assert result.success is True
-
-
-def test_wait_result_is_alias():
-    """Test that WaitResult is an alias for StatusResult."""
-    assert WaitResult is StatusResult
 
 
 # --- Test extract_server_duration function ---

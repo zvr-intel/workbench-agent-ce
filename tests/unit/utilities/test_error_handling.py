@@ -10,9 +10,7 @@ from workbench_agent.api.exceptions import (
     NetworkError,
     ProcessError,
     ProcessTimeoutError,
-    ProjectExistsError,
     ProjectNotFoundError,
-    ScanExistsError,
     ScanNotFoundError,
 )
 from workbench_agent.exceptions import (
@@ -60,8 +58,7 @@ def test_format_and_print_error_project_not_found_read_only(
         for call in print_calls
     )
     assert any(
-        "Project 'test_project' was not found" in call
-        for call in print_calls
+        "Project 'test_project' not found" in call for call in print_calls
     )
 
 
@@ -80,8 +77,7 @@ def test_format_and_print_error_project_not_found_write_operation(
         "Error executing 'scan' command" in call for call in print_calls
     )
     assert any(
-        "Project 'test_project' was not found" in call
-        for call in print_calls
+        "Project 'test_project' not found" in call for call in print_calls
     )
 
 
@@ -119,7 +115,7 @@ def test_format_and_print_error_scan_not_found_no_project(
 
     print_calls = [call.args[0] for call in mock_print.call_args_list]
     assert any(
-        "Scan 'test_scan' was not found in your Workbench instance" in call
+        "Scan 'test_scan' was not found in Workbench" in call
         for call in print_calls
     )
 

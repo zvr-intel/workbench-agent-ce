@@ -98,12 +98,10 @@ class ToolboxWrapper:
         self, path: str, run_dependency_analysis: bool = False
     ) -> str:
         """
-        Generate cryptographic file hashes and signatures using FossID Toolbox.
+        Generate hashes using FossID Toolbox.
 
-        Uses the FossID Toolbox hash command to generate cryptographic
-        hashes and signatures for files in the given path. The output
-        is redirected to a temporary file which is then uploaded to
-        Workbench for blind scanning.
+        Uses the FossID Toolbox hash command to generate signatures
+        for the given path. The output is redirected to a temporary file.
 
         Args:
             path: Path of the code to generate hashes for
@@ -124,7 +122,7 @@ class ToolboxWrapper:
         temporary_file_path = (
             f"/tmp/blind_scan_result_{self.randstring(8)}.fossid"
         )
-        logger.info(f"Starting hash generation for path: {path}")
+        logger.info(f"Hashing path: {path}")
         logger.debug(
             f"Temporary file will be created at: {temporary_file_path}"
         )
@@ -141,7 +139,7 @@ class ToolboxWrapper:
 
         # Build fossid-toolbox hash command
         # Format: fossid-toolbox hash [OPTIONS] <PATHS>...
-        cmd_args = [self.toolbox_path, "hash"]  # Hash subcommand
+        cmd_args = [self.toolbox_path, "hash"]  # Hash command
 
         if run_dependency_analysis:
             # Enable manifest for dependency analysis
@@ -188,8 +186,7 @@ class ToolboxWrapper:
             file_size = os.path.getsize(temporary_file_path)
             if file_size == 0:
                 logger.warning(
-                    "Hash generation completed but generated empty "
-                    "results file"
+                    "Hash generation completed but generated empty file."
                 )
             else:
                 logger.info(

@@ -31,8 +31,8 @@ def handle_download_reports(
     """
     Handler for the 'download-reports' command.
 
-    Downloads reports for a scan or project. Supports both synchronous and
-    asynchronous report generation with multiple report formats.
+    Download reports for a scan or project. Supports both synchronous and
+    asynchronous reports with multiple configuration parameters.
 
     Args:
         client: The Workbench API client
@@ -206,7 +206,6 @@ def handle_download_reports(
         error_count,
         error_types,
         scan_code=scan_code,
-        project_code=project_code,
         show_summary=getattr(params, "show_summary", False),
     )
 

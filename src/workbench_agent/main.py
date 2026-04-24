@@ -7,13 +7,9 @@ from workbench_agent.api.exceptions import (
     CompatibilityError,
     NetworkError,
     ProcessError,
-    ProcessTimeoutError,
-    ProjectNotFoundError,
-    ScanNotFoundError,
 )
 from workbench_agent.api.workbench_client import WorkbenchClient
 
-# Package imports
 from workbench_agent.cli import parse_cmdline_args
 from workbench_agent.exceptions import (
     ConfigurationError,
@@ -21,8 +17,6 @@ from workbench_agent.exceptions import (
     ValidationError,
     WorkbenchAgentError,
 )
-
-# Import handlers from handlers package (new architecture)
 from workbench_agent.handlers import (
     handle_blind_scan,
     handle_delete_scan,
@@ -41,7 +35,7 @@ from workbench_agent.utilities.error_handling import format_and_print_error
 
 def setup_logging(log_level: str) -> logging.Logger:
     """
-    Set up enhanced logging configuration with both file and console handlers.
+    Set up logging configuration with file and console handlers.
 
     Args:
         log_level: The logging level (DEBUG, INFO, WARNING, ERROR)
@@ -80,70 +74,28 @@ def setup_logging(log_level: str) -> logging.Logger:
     console_handler.setLevel(numeric_level)
     root_logger.addHandler(console_handler)
 
-    # Configure workbench-agent logger (don't propagate to avoid duplication)
+    # Configure workbench-agent logger
     app_logger = logging.getLogger("workbench-agent")
     app_logger.setLevel(numeric_level)
 
     return app_logger
 
 
-def uses_legacy_interface(args_list: list) -> bool:
-    """
-    Detect if the command line arguments use the legacy underscore interface.
-
-    Args:
-        args_list: List of command line arguments (sys.argv[1:])
-
-    Returns:
-        bool: True if legacy interface is detected
-    """
-    from .cli.common import uses_legacy_interface as cli_common_uses_legacy
-
-    return cli_common_uses_legacy(args_list)
-
-
-def handle_legacy_request() -> int:
-    """
-    Handle legacy requests using the refactored legacy module.
-
-    Returns:
-        int: Exit code from the legacy handler
-    """
-    from .legacy import handle_legacy_main
-
-    return handle_legacy_main()
-
-
 def main() -> int:
     """
-    Main entry point for the Workbench Agent.
-
-    Detects whether legacy or modern interface is being used:
-    - Legacy: Delegates directly to original-wb-agent.py
-    - Modern: Uses new command-based handlers with WorkbenchClient architecture
+    Main entrypoint for the Workbench Agent.
 
     Returns:
         int: Exit code (0 for success, non-zero for failure)
     """
     try:
-        # Quick check for legacy interface before any parsing
-        args_list = sys.argv[1:] if len(sys.argv) > 1 else []
-
-        if uses_legacy_interface(args_list):
-            # Delegate directly to original script for full compatibility
-            return handle_legacy_request()
-
-        # Modern interface - proceed with new implementation
         args = parse_cmdline_args()
 
-        # Setup logging for modern commands
         logger = setup_logging(args.log)
 
-        logger.info("FossID Workbench Agent starting...")
+        logger.info("Workbench Agent starting...")
         logger.debug(f"Command line arguments: {vars(args)}")
 
-        # Initialize Workbench API client
-        # (using new WorkbenchClient architecture)
         logger.info("Initializing WorkbenchClient...")
         workbench = WorkbenchClient(
             api_url=args.api_url,
@@ -152,12 +104,9 @@ def main() -> int:
         )
         logger.info("WorkbenchClient initialized.")
 
-        # Print configuration for verification if requested
-        # (includes connection info if workbench client is provided)
         if getattr(args, "show_config", False):
             print_configuration(args, workbench)
 
-        # Command dispatch for modern commands
         COMMAND_HANDLERS = {
             "scan": handle_scan,
             "blind-scan": handle_blind_scan,
@@ -233,10 +182,6 @@ def main() -> int:
         return 2
 
     except (
-        ProjectNotFoundError,  # Before ApiError (inherits from NotFoundError → ApiError)
-        ScanNotFoundError,  # Before ApiError (inherits from NotFoundError → ApiError)
-        ProcessTimeoutError,  # Before ProcessError (inherits from ProcessError)
-        # Now the base classes
         ApiError,
         NetworkError,
         ProcessError,
@@ -273,13 +218,13 @@ def main() -> int:
         return 1
 
     except Exception as e:
-        # Unexpected errors (should be rare - handlers wrap these in WorkbenchAgentError)
+        # Unexpected errors (handlers wrap these in WorkbenchAgentError)
         try:
             logger.error(f"Unexpected error: {e}", exc_info=True)
         except NameError:
             # logger not yet initialized
             pass
-        # Format and print error with appropriate context
+        # Format and print error
         try:
             context = getattr(args, "command", "unknown")
             format_and_print_error(e, context, args)
