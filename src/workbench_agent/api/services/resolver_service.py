@@ -328,7 +328,6 @@ class ResolverService:
             str: Project code of the created project
 
         Raises:
-            ProjectExistsError: If project already exists
             ApiError: If creation fails
         """
         logger.debug(f"Creating project '{project_name}'...")

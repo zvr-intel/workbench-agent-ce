@@ -10,9 +10,7 @@ from workbench_agent.api.exceptions import (
     NetworkError,
     ProcessError,
     ProcessTimeoutError,
-    ProjectExistsError,
     ProjectNotFoundError,
-    ScanExistsError,
     ScanNotFoundError,
 )
 from workbench_agent.exceptions import (

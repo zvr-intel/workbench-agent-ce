@@ -9,7 +9,6 @@ import requests
 from workbench_agent.api.clients.scans_api import ScansClient
 from workbench_agent.api.exceptions import (
     ApiError,
-    ScanExistsError,
     ScanNotFoundError,
 )
 from workbench_agent.api.helpers.base_api import BaseAPI
@@ -136,19 +135,6 @@ def test_create_scan_with_git_depth(mock_send, scans_client):
     assert result == 999  # Returns scan_id as int
     payload = mock_send.call_args[0][0]
     assert payload["data"]["git_depth"] == "1"
-
-
-@patch.object(BaseAPI, "_send_request")
-def test_create_scan_exists(mock_send, scans_client):
-    mock_send.return_value = {
-        "status": "0",
-        "error": "Scan code already exists",
-    }
-    data = {"scan_name": "Existing Scan", "project_code": "PROJ1"}
-    with pytest.raises(
-        ScanExistsError, match="Scan 'Existing Scan' already exists"
-    ):
-        scans_client.create(data)
 
 
 @patch.object(BaseAPI, "_send_request")

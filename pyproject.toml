@@ -101,7 +101,6 @@ exclude = [
     "inspiration/",
     "build/",
     "dist/",
-    "*/legacy/*",
     "tests/",  # Exclude tests from type checking to reduce noise
 ]
 ignore_missing_imports = true
@@ -112,7 +111,6 @@ omit = [
     "*/tests/*",
     "*/inspiration/*",
     "*/__pycache__/*",
-    "*/legacy/*"
 ]
 
 [tool.coverage.report]

@@ -15,7 +15,6 @@ import requests
 
 from workbench_agent.api.exceptions import (
     ApiError,
-    ScanExistsError,
     ScanNotFoundError,
 )
 
@@ -493,42 +492,29 @@ class ScansClient:
         Raises:
             ApiError: If the API call fails
             NetworkError: If there's a network issue
-            ScanExistsError: If a scan with this name already exists
         """
         scan_name = data.get("scan_name", "unknown")
         logger.debug(f"Creating scan '{scan_name}' via API")
 
         payload = {"group": "scans", "action": "create", "data": data}
 
-        try:
-            response = self._api._send_request(payload)
-            if response.get("status") == "1" and "data" in response:
-                scan_id = response["data"].get("scan_id")
-                if scan_id is None:
-                    raise ApiError(
-                        f"Scan created but no scan_id returned for '{scan_name}'",
-                        details=response,
-                    )
-                logger.debug(
-                    f"Successfully created scan '{scan_name}' with ID {scan_id}"
-                )
-                return int(scan_id)
-            else:
-                error_msg = response.get("error", "Unknown error")
+        response = self._api._send_request(payload)
+        if response.get("status") == "1" and "data" in response:
+            scan_id = response["data"].get("scan_id")
+            if scan_id is None:
                 raise ApiError(
-                    f"Failed to create scan '{scan_name}': {error_msg}",
+                    f"Scan created but no scan_id returned for '{scan_name}'",
                     details=response,
                 )
-        except ApiError as e:
-            if "Scan code already exists" in str(
-                e
-            ) or "code_already_exists" in str(e):
-                logger.debug(f"Scan '{scan_name}' already exists.")
-                raise ScanExistsError(
-                    f"Scan '{scan_name}' already exists",
-                    details=getattr(e, "details", None),
-                ) from e
-            raise
+            logger.debug(
+                f"Successfully created scan '{scan_name}' with ID {scan_id}"
+            )
+            return int(scan_id)
+        error_msg = response.get("error", "Unknown error")
+        raise ApiError(
+            f"Failed to create scan '{scan_name}': {error_msg}",
+            details=response,
+        )
 
     def update(
         self,

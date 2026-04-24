@@ -35,10 +35,10 @@ class WorkbenchApiError(Exception):
 
 
 class ApiError(WorkbenchApiError):
-    """Represents an error returned by the Workbench API or during API interaction.
+    """Represents an error returned by the Workbench API.
 
-    This is raised when the API returns an error response or when there's an
-    issue with the API interaction that isn't network-related.
+    This is raised when the API returns an error or when there's an
+    issue that isn't network-related.
 
     Example:
         try:
@@ -47,28 +47,23 @@ class ApiError(WorkbenchApiError):
             logger.error(f"API error: {e.message} (code: {e.code})")
     """
 
-    pass
-
 
 class UnsupportedStatusCheck(ApiError):
-    """Raised when a status check operation is not supported by the Workbench instance.
+    """Raised when a status check operation is not supported by Workbench.
 
-    This exception is raised when attempting to check the status of an operation type
-    that is not supported by the current Workbench version. This allows for graceful
-    handling of version compatibility issues.
+    This exception is raised when the connected Workbench version does not
+    support checking the status of an operation.
 
     Examples:
         >>> raise UnsupportedStatusCheck("EXTRACT_ARCHIVES not supported",
-        ...                             details={"operation": "EXTRACT_ARCHIVES", "scan_code": "scan123"})
+        ...  details={"operation": "EXTRACT_ARCHIVES", "scan_code": "scan123"})
     """
-
-    pass
 
 
 class NetworkError(WorkbenchApiError):
     """Represents a network-level error during API communication.
 
-    This includes connection errors, timeouts, and other network-related issues.
+    This includes connection errors, timeouts, and other network issues.
 
     Example:
         try:
@@ -76,8 +71,6 @@ class NetworkError(WorkbenchApiError):
         except NetworkError as e:
             logger.error(f"Network error: {e.message}")
     """
-
-    pass
 
 
 class AuthenticationError(ApiError):
@@ -93,16 +86,12 @@ class AuthenticationError(ApiError):
             logger.error(f"Authentication failed: {e.message}")
     """
 
-    pass
-
 
 class NotFoundError(ApiError):
     """Base class for errors when an entity is not found via the API.
 
     This is raised when attempting to access a resource that doesn't exist.
     """
-
-    pass
 
 
 class ScanNotFoundError(NotFoundError):
@@ -115,8 +104,6 @@ class ScanNotFoundError(NotFoundError):
             logger.error(f"Scan not found: {e.message}")
     """
 
-    pass
-
 
 class ProjectNotFoundError(NotFoundError):
     """Raised when a project is not found.
@@ -127,44 +114,6 @@ class ProjectNotFoundError(NotFoundError):
         except ProjectNotFoundError as e:
             logger.error(f"Project not found: {e.message}")
     """
-
-    pass
-
-
-class ResourceExistsError(ApiError):
-    """Base class for errors when trying to create an entity that already exists.
-
-    This is raised when attempting to create a resource with a name that's
-    already in use.
-    """
-
-    pass
-
-
-class ScanExistsError(ResourceExistsError):
-    """Raised when trying to create a scan that already exists.
-
-    Example:
-        try:
-            api.create({"scan_name": "existing_scan"})
-        except ScanExistsError as e:
-            logger.error(f"Scan already exists: {e.message}")
-    """
-
-    pass
-
-
-class ProjectExistsError(ResourceExistsError):
-    """Raised when trying to create a project that already exists.
-
-    Example:
-        try:
-            api.create("existing_project")
-        except ProjectExistsError as e:
-            logger.error(f"Project already exists: {e.message}")
-    """
-
-    pass
 
 
 class ProcessError(WorkbenchApiError):
@@ -182,8 +131,6 @@ class ProcessError(WorkbenchApiError):
             logger.error(f"Process failed: {e.message}")
     """
 
-    pass
-
 
 class ProcessTimeoutError(ProcessError):
     """Raised when waiting for a process times out.
@@ -196,8 +143,6 @@ class ProcessTimeoutError(ProcessError):
         except ProcessTimeoutError as e:
             logger.error(f"Scan timed out: {e.message}")
     """
-
-    pass
 
 
 class CompatibilityError(WorkbenchApiError):
@@ -222,4 +167,3 @@ class CompatibilityError(WorkbenchApiError):
         ... )
     """
 
-    pass
