@@ -33,7 +33,7 @@ jobs:
     - name: Install Workbench Agent Dependencies
       run: pip install .
 
-    - name: Upload Archive and Scan
+    - name: Scan PR HEAD Branch
       run: |
         workbench-agent scan \
         --api-url ${{ env.WORKBENCH_URL }} \
@@ -49,7 +49,7 @@ jobs:
         --delta-scan \
         --no-wait
 
-    - name: Evaluate Gates; Fail on Issues
+    - name: Evaluate Gates for Full PR HEAD
       run: |
         workbench-agent evaluate-gates \
         --api-url ${{ env.WORKBENCH_URL }} \
