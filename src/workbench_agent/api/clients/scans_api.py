@@ -635,18 +635,17 @@ class ScansClient:
         Raw ``scans`` / ``delete`` API call.
 
         Returns the parsed JSON body on success. On API error (including
-        invalid ``scan_code``), :meth:`~workbench_agent.api.helpers.base_api.BaseAPI._send_request`
-        raises :class:`~workbench_agent.api.exceptions.ApiError`.
+        invalid `scan_code`) raises `workbench_agent.api.exceptions.ApiError`
 
         For orchestration (not-found handling, polling until deleted), use
-        :class:`~workbench_agent.api.services.scan_deletion.ScanDeletionService`.
+        workbench_agent.api.services.scan_deletion.ScanDeletionService
 
         Args:
             scan_code: Code of the scan to delete
-            delete_identifications: API ``delete_identifications`` ``"1"`` / ``"0"``
+            delete_identifications: whether to delete identifications
 
         Returns:
-            Full successful API response dict (typically includes ``data.process_id``)
+            Full API response dict (typically includes `data.process_id`)
 
         Raises:
             ApiError: If the API returns an error response
@@ -850,7 +849,7 @@ class ScansClient:
                     error_detail = f"Failed to remove content from scan '{scan_code}': {error_msg}"
 
                 raise ApiError(error_detail, details=response)
-        except (ScanNotFoundError, ApiError):
+        except (ApiError):
             raise
         except Exception as e:
             if filename:
@@ -967,7 +966,7 @@ class ScansClient:
                     f"Failed to run scan '{scan_code}': {error_msg}",
                     details=response,
                 )
-        except (ScanNotFoundError, ApiError):
+        except (ApiError):
             raise
         except Exception as e:
             logger.error(
@@ -1025,7 +1024,7 @@ class ScansClient:
         process_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Check the status of a scan operation.
+        Check the status of various scan operations.
 
         This method directly wraps the API's check_status action.
         Always returns a dict, normalizing any non-dict responses from the API.
@@ -1164,7 +1163,6 @@ class ScansClient:
             ApiError: If report generation fails
 
         Example:
-            >>> # Build payload manually (not recommended)
             >>> payload_data = {
             ...     "scan_code": "scan_code",
             ...     "report_type": "xlsx",
