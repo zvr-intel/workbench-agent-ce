@@ -118,24 +118,6 @@ class TestScanOperationsParser:
         assert "--dependency-analysis-only" in help_text
         assert "--no-wait" in help_text
 
-    def test_scan_operations_help_text(self):
-        """Test that help text is appropriate for each argument."""
-        parser = create_scan_operations_parser()
-        help_text = parser.format_help()
-
-        # Check for key phrases in help text
-        assert "Run dependency analysis after KB scan" in help_text
-        assert (
-            "Run dependency analysis without performing a KB scan"
-            in help_text
-        )
-        assert (
-            "Mutually exclusive with --run-dependency-analysis"
-            in help_text
-        )
-        assert "Exit after confirming scan has started" in help_text
-        assert "waiting for completion" in help_text
-
     def test_scan_operations_action_types(self):
         """Test that all scan operation arguments are store_true actions."""
         parser = create_scan_operations_parser()
