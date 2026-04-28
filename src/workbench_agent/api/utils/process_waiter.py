@@ -1,9 +1,8 @@
 """
 Process waiting data structures and utilities.
 
-This module defines data structures and utilities used throughout
-waiting infrastructure to provide consistent interfaces for status
-checking and wait result reporting.
+This module is used throughout waiting infrastructure to provide
+interfaces for status checking and wait result reporting.
 """
 
 import logging

@@ -11,7 +11,7 @@ class TestScanOperationsParser:
     """Test the new scan_operations parent parser functionality."""
 
     def test_create_scan_operations_parser(self):
-        """Test that the scan operations parser is created with correct arguments."""
+        """Test that the scan operations parser is created correctly."""
         parser = create_scan_operations_parser()
 
         # Test that it's a valid parser

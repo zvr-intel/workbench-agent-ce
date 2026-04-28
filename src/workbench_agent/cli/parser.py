@@ -287,8 +287,8 @@ Examples:
     # --- 'evaluate-gates' Subcommand ---
     evaluate_gates_parser = subparsers.add_parser(
         "evaluate-gates",
-        help="Check a scan for Pending IDs, Policy warnings, or CVEs.",
-        description="Shows pass/fail by default; add --fail-on-* to fail hard.",
+        help="Check a scan for pending IDs, policy warnings, or CVEs.",
+        description="Default shows pass/fail; adding --fail-on-* fails hard.",
         formatter_class=RawTextHelpFormatter,
         parents=[
             parent_parsers["cli_behaviors"],

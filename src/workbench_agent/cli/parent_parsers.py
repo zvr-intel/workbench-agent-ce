@@ -64,8 +64,8 @@ def create_cli_behaviors_parser():
     cli_behaviors_args.add_argument(
         "--show-summary",
         help=(
-            "Show post-operation summary with operation details, identification "
-            "metrics, components/licenses, and security risks."
+            "Show post-op summary with details, identification "
+            "metrics, components/licenses, and CVEs."
         ),
         action="store_true",
         default=False,
@@ -88,11 +88,11 @@ def create_id_assist_control_parser():
     )
     id_assist_control_args.add_argument(
         "--match-filtering-threshold",
-        help="Minimum character count for match filtering. Set 0 to disable (Default: uses server config).",
+        help="Minimum character count for match filtering. Set 0 to disable (Default: use server config).",
         type=int,
         metavar="CHARS",
     )
-    ## TODO: Add ProjectScan Control
+    # TODO: Add ProjectScan Control
     return id_assist_control_parent
 
 
