@@ -1,7 +1,7 @@
 """
-Custom exceptions for Workbench Agent CLI application.
+Custom exceptions for Workbench Agent.
 
-This module defines the exception hierarchy for the Workbench Agent CLI application.
+This module defines the exception hierarchy for the Workbench Agent.
 All application-level exceptions inherit from WorkbenchAgentError.
 
 Note: API/SDK-level exceptions are defined in workbench_agent.api.exceptions.
@@ -47,8 +47,6 @@ class ValidationError(WorkbenchAgentError):
             logger.error(f"Validation error: {e.message}")
     """
 
-    pass
-
 
 class ConfigurationError(WorkbenchAgentError):
     """Raised for invalid configuration or command-line arguments.
@@ -63,14 +61,11 @@ class ConfigurationError(WorkbenchAgentError):
             logger.error(f"Configuration error: {e.message}")
     """
 
-    pass
-
 
 class FileSystemError(WorkbenchAgentError):
     """Raised for errors related to local file/directory operations.
 
-    This includes file not found, permission denied, and other filesystem-related
-    errors.
+    Includes file not found, permission denied, and other filesystem errors.
 
     Example:
         try:
@@ -78,5 +73,3 @@ class FileSystemError(WorkbenchAgentError):
         except FileSystemError as e:
             logger.error(f"File system error: {e.message}")
     """
-
-    pass

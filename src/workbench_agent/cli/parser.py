@@ -347,8 +347,8 @@ Examples:
         epilog="""
 Examples:
   # Download all scan-level reports
-  workbench-agent download-reports --project-name "MyProject" --scan-name "v1.0.0" \\
-      --report-scope scan
+  workbench-agent download-reports --project-name "MyProject" \\
+      --scan-name "v1.0.0" --report-scope scan
 
   # Download specific report types (scan-level)
   workbench-agent download-reports --project-name "MyProject" --scan-name "v1.0.0" \\
@@ -380,21 +380,21 @@ Examples:
     )
     download_reports_parser.add_argument(
         "--report-scope",
-        help="Scope of the report (Default: scan). Use 'project' for project-level reports.",
+        help="Scope (Default: scan). Use 'project' for project reports.",
         choices=["scan", "project"],
         default="scan",
         metavar="SCOPE",
     )
     download_reports_parser.add_argument(
         "--report-type",
-        help="Report types to generate and download. Multiple types can be comma-separated. If not specified, all available report types for the chosen scope will be downloaded.",
+        help="Comma-separated list of reports to download. If blank, all reports are downloaded.",
         required=False,
         default="ALL",
         metavar="TYPE",
     )
     download_reports_parser.add_argument(
         "--report-save-path",
-        help="Output directory for reports (Default: current dir).",
+        help="Save directory for reports (Default: current dir).",
         default=".",
         metavar="PATH",
     )

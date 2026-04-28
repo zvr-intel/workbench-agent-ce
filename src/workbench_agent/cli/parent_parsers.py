@@ -21,7 +21,7 @@ def create_workbench_connection_parser():
     )
     workbench_connection_args.add_argument(
         "--api-url",
-        help="API Endpoint URL (e.g., https://workbench.example.com/api.php). Overrides WORKBENCH_URL env var.",
+        help="Workbench API Endpoint (e.g., https://workbench.example.com/api.php). Overrides WORKBENCH_URL env var.",
         default=os.getenv("WORKBENCH_URL"),
         required=not os.getenv("WORKBENCH_URL"),
         metavar="URL",
@@ -88,7 +88,7 @@ def create_id_assist_control_parser():
     )
     id_assist_control_args.add_argument(
         "--match-filtering-threshold",
-        help="Minimum snippet length in characters for match filtering. Set to 0 to disable (Default: uses server config).",
+        help="Minimum character count for match filtering. Set 0 to disable (Default: uses server config).",
         type=int,
         metavar="CHARS",
     )
@@ -217,13 +217,13 @@ def create_scan_operations_parser():
     )
     scan_ops_args.add_argument(
         "--dependency-analysis-only",
-        help="Run dependency analysis without performing a KB scan. Mutually exclusive with --run-dependency-analysis.",
+        help="Run dependency analysis without a KB scan. Mutually exclusive with --run-dependency-analysis.",
         action="store_true",
         default=False,
     )
     scan_ops_args.add_argument(
         "--no-wait",
-        help="Exit after confirming scan has started instead of waiting for completion.",
+        help="Exit after scan starts instead of waiting for completion.",
         action="store_true",
         default=False,
     )
@@ -241,7 +241,7 @@ def create_scan_operations_parser():
     )
     scan_ops_args.add_argument(
         "--full-file-only",
-        help="Return only full file matches regardless of sensitivity setting.",
+        help="Return only full file matches regardless of sensitivity.",
         action="store_true",
         default=False,
     )
@@ -313,7 +313,7 @@ def create_result_options_parser():
     )
     results_display_args.add_argument(
         "--result-save-path",
-        help="Save the requested results to this file/directory (JSON format).",
+        help="Save requested results to this file/directory (JSON format).",
         metavar="PATH",
     )
     return result_options_parent

@@ -37,12 +37,11 @@ class ScanContentService:
         self, scan_code: str, filename: Optional[str] = None
     ) -> bool:
         """
-        Remove uploaded content from a scan (full tree or a path).
+        Remove uploaded content from a scan (all or a specific path).
 
         Args:
             scan_code: Scan code
-            filename: Relative path, or ``None`` / ``""`` for entire scan
-                directory (API behavior)
+            filename: Relative path, or blank for entire scan
         """
         logger.debug(
             "Removing uploaded content for scan '%s' (path=%r)",
@@ -53,7 +52,7 @@ class ScanContentService:
 
     def download_content_from_git(self, scan_code: str) -> bool:
         """Start Git clone/download for the scan's configured repository."""
-        logger.debug("Initiating Git content download for scan '%s'", scan_code)
+        logger.debug("Initiating Git Clone for scan '%s'", scan_code)
         return self._scans.download_content_from_git(scan_code)
 
     def check_git_clone_status(

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger("workbench-agent")
 
-# Permission ``code`` values from Workbench (users / get_user_permissions_list).
+# Permission `code` values from Workbench (users / get_user_permissions_list).
 PERMISSION_SCAN_DELETE_ANY = "SCAN_DELETE_ANY"
 
 
@@ -33,11 +33,11 @@ class UserPermissionsService:
         self._scans = scans_client
         self._api_user = api_user
         self._cache: Optional[List[Dict[str, Any]]] = None
-        logger.debug("UserPermissionsService initialized for user %s", api_user)
+        logger.debug("UserPermissionsService initialized for %s", api_user)
 
     @property
     def api_user(self) -> str:
-        """Username whose permissions are evaluated (the agent API user)."""
+        """Username whose permissions are evaluated (the API user)."""
         return self._api_user
 
     def invalidate_cache(self) -> None:

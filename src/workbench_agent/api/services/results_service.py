@@ -1,7 +1,7 @@
 """
 ResultsService - Handles fetching scan results.
 
-This service provides methods for retrieving various types of scan results
+This service provides methods for retrieving various scan results
 including licenses, components, dependencies, vulnerabilities, metrics, and
 policy warnings. It also provides methods for generating Workbench UI links.
 """
@@ -15,7 +15,6 @@ from packaging import version as packaging_version
 from workbench_agent.api.exceptions import (
     ApiError,
     NetworkError,
-    ScanNotFoundError,
 )
 
 logger = logging.getLogger("workbench-agent")
@@ -25,14 +24,13 @@ NUI_MIN_VERSION = "2026.1.0"
 
 class WorkbenchLinks:
     """
-    Helper class providing property-based access to Workbench UI links.
+    Helper class providing Workbench UI links.
 
     This class is returned by ResultsService.workbench_links() and provides
-    convenient property access to different Workbench views.
+    access to different Workbench views.
 
-    For Workbench >= 26.1.0, links use the new ``/nui/`` path-based format.
-    For older versions, the legacy ``index.html`` query-parameter format is
-    used.
+    For Workbench >= 26.1.0, links use a new ``/nui/`` path-based format.
+    For older versions, ``index.html`` query-parameter format is used.
 
     Example:
         >>> links = results_service.workbench_links(scan_id=123)
@@ -182,7 +180,7 @@ class ResultsService:
         >>> results_service = ResultsService(scans_client, vulns_client)
         >>>
         >>> # Fetch specific result types
-        >>> licenses = results_service.get_unique_identified_licenses(scan_code)
+        >>> lic = results_service.get_unique_identified_licenses(scan_code)
         >>> vulns = results_service.get_vulnerabilities(scan_code)
         >>>
         >>> # Fetch all results based on params
@@ -196,11 +194,9 @@ class ResultsService:
         Initialize ResultsService.
 
         Args:
-            scans_client: ScansClient instance for scan-related results
-            vulnerabilities_client: VulnerabilitiesClient for vulnerability
-                data
-            workbench_version: Workbench server version string, used to
-                determine URL format for generated links
+            scans_client: ScansClient instance for scan results
+            vulnerabilities_client: VulnerabilitiesClient for vuln data
+            workbench_version: Workbench version for link generation
         """
         self._scans = scans_client
         self._vulnerabilities = vulnerabilities_client
@@ -233,14 +229,13 @@ class ResultsService:
         """
         Get a WorkbenchLinks object from scan_code.
 
-        This is a convenience method that converts scan_code to scan_id
-        and returns the WorkbenchLinks object.
+        This converts scan_code to scan_id and returns WorkbenchLinks.
 
         Args:
             scan_code: Code of the scan
 
         Returns:
-            WorkbenchLinks instance with properties for different views
+            WorkbenchLinks instance with different views
 
         Raises:
             ScanNotFoundError: If scan doesn't exist
@@ -304,9 +299,8 @@ class ResultsService:
         """
         Get all identified licenses from KB scanning with file paths.
 
-        Returns all license occurrences including file paths where each license
-        was found. This is useful when you need to know which files contain
-        specific licenses.
+        Returns all licenses including file paths where each license was found.
+        Useful to know which files contain which licenses.
 
         Args:
             scan_code: Code of the scan to fetch licenses from
@@ -337,35 +331,6 @@ class ResultsService:
         )
         logger.debug(f"Retrieved {len(licenses)} license occurrences")
         return licenses
-
-    def get_identified_licenses(
-        self, scan_code: str, unique: bool = True
-    ) -> List[Dict[str, Any]]:
-        """
-        Get identified licenses from KB scanning.
-
-        .. deprecated:: Use get_unique_identified_licenses() or
-                        get_all_identified_licenses() instead.
-
-        This method is kept for backward compatibility but will be removed
-        in a future version. Use the more explicit method names instead.
-
-        Args:
-            scan_code: Code of the scan to fetch licenses from
-            unique: If True, returns only unique licenses (default: True)
-
-        Returns:
-            List of license dictionaries with identifier and name
-
-        Raises:
-            ApiError: If there are API issues
-            NetworkError: If there are network issues
-            ScanNotFoundError: If the scan doesn't exist
-        """
-        if unique:
-            return self.get_unique_identified_licenses(scan_code)
-        else:
-            return self.get_all_identified_licenses(scan_code)
 
     def get_identified_components(
         self, scan_code: str
@@ -440,8 +405,7 @@ class ResultsService:
             scan_code: Code of the scan to fetch vulnerabilities from
 
         Returns:
-            List of vulnerability dictionaries with CVE, severity,
-            component info, etc.
+            Vulnerability dictionaries with CVE, severity, etc.
 
         Raises:
             ApiError: If there are API issues
@@ -701,7 +665,7 @@ class ResultsService:
                 if metrics:
                     collected_results["scan_metrics"] = metrics
                     logger.info("Fetched scan metrics")
-            except (ApiError, NetworkError, ScanNotFoundError) as e:
+            except (ApiError, NetworkError) as e:
                 logger.warning(f"Could not fetch Scan File Metrics: {e}")
                 print(f"Warning: Could not fetch Scan File Metrics: {e}")
 
@@ -729,7 +693,7 @@ class ResultsService:
                     logger.info(
                         f"Fetched {len(vulnerabilities)} vulnerabilities"
                     )
-            except (ApiError, NetworkError, ScanNotFoundError) as e:
+            except (ApiError, NetworkError) as e:
                 logger.warning(f"Could not fetch Vulnerabilities: {e}")
                 print(f"Warning: Could not fetch Vulnerabilities: {e}")
 

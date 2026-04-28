@@ -128,8 +128,8 @@ def handle_blind_scan(
 
     Allows scanning without uploading source code to Workbench.
 
-    For the provided path, uses Toolbox to generate hashes,
-    uploads the hash file, then runs the scan.
+    For a provided path, use Toolbox to generate hashes,
+    upload the hash file, then run the scan.
 
     Alternatively, accepts a pre-generated .fossid file,
     skipping the Toolbox hashing step.
@@ -224,10 +224,6 @@ def handle_blind_scan(
             except Exception as e:
                 logger.warning(
                     f"Failed to clear existing scan content: {e}"
-                )
-                print(
-                    f"Warning: Could not clear existing "
-                    f"scan content: {e}"
                 )
                 print("Continuing with hash upload...")
         else:
