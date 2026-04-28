@@ -55,6 +55,8 @@ def handle_import_da(
         ValidationError: If parameters are invalid
         FileSystemError: If file doesn't exist
         WorkbenchAgentError: If import fails
+        ProcessTimeoutError: If import times out
+        ProcessError: If import fails
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
 

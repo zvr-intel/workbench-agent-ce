@@ -95,10 +95,10 @@ class TestScanOperationsParser:
         assert args2.no_wait is True
 
     def test_conflicting_dependency_analysis_flags(self):
-        """Test that conflicting DA flags can be parsed (validation happens elsewhere)."""
+        """Test that conflicting DA flags can be parsed."""
         parser = create_scan_operations_parser()
 
-        # The parser should accept both flags - validation logic handles conflicts
+        # parser should accept both flags - validation handles conflicts
         args = parser.parse_args(
             ["--run-dependency-analysis", "--dependency-analysis-only"]
         )
