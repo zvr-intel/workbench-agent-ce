@@ -25,7 +25,7 @@ jobs:
         --api-user ${{ env.WORKBENCH_USER }} \
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         --project-name DogFood-$GITHUB_REPOSITORY \
-        --scan-name ScanGit-$GITHUB_REF_NAME \
+        --scan-name BASELINE-$GITHUB_REF_NAME \
         --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
         --git-branch $GITHUB_REF_NAME \
         --git-depth 1 \
