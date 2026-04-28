@@ -2,11 +2,14 @@
 
 import os
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from workbench_agent.api.exceptions import ProcessError
 from workbench_agent.exceptions import FileSystemError
 from workbench_agent.utilities.toolbox_wrapper import ToolboxWrapper
 
@@ -173,34 +176,95 @@ class TestToolboxWrapperGenerateHashes:
                 os.remove(tmp_path)
 
 
-class TestToolboxWrapperRandstring:
-    """Test the randstring static method."""
+class TestToolboxWrapperTempFileSafety:
+    """
+    Mocked tests for the secure temp-file path used by generate_hashes.
 
-    def test_randstring_default_length(self):
-        """Test randstring with default length."""
-        result = ToolboxWrapper.randstring()
-        assert len(result) == 10
-        assert result.isalpha()
-        assert result.isupper()
+    The end-to-end generate_hashes_* tests above require a real
+    fossid-toolbox binary and skip in CI; these tests mock the binary
+    + subprocess so the temp-file behavior is always exercised.
+    """
 
-    def test_randstring_custom_length(self):
-        """Test randstring with custom length."""
-        result = ToolboxWrapper.randstring(5)
-        assert len(result) == 5
-        assert result.isalpha()
-        assert result.isupper()
+    @pytest.fixture
+    def wrapper(self, tmp_path):
+        """Wrapper backed by a fake executable file."""
+        fake_toolbox = tmp_path / "fossid-toolbox"
+        fake_toolbox.write_text("#!/bin/sh\nexit 0\n")
+        fake_toolbox.chmod(0o755)
+        return ToolboxWrapper(toolbox_path=str(fake_toolbox))
 
-    def test_randstring_zero_length(self):
-        """Test randstring with zero length."""
-        result = ToolboxWrapper.randstring(0)
-        assert len(result) == 0
-        assert result == ""
+    def test_temp_file_lives_in_system_temp_dir(self, wrapper, tmp_path):
+        """Output file is allocated under tempfile.gettempdir(), not /tmp."""
+        scan_target = tmp_path / "src.py"
+        scan_target.write_text("x = 1\n")
 
-    def test_randstring_only_valid_chars(self):
-        """Test that randstring only contains valid characters."""
-        result = ToolboxWrapper.randstring(100)
-        valid_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        for char in result:
-            assert char in valid_chars
+        completed = MagicMock()
+        completed.returncode = 0
+        completed.stderr = ""
+
+        with patch(
+            "workbench_agent.utilities.toolbox_wrapper.subprocess.run",
+            return_value=completed,
+        ):
+            result_path = wrapper.generate_hashes(str(scan_target))
+
+        try:
+            assert result_path.startswith(tempfile.gettempdir())
+            assert os.path.basename(result_path).startswith(
+                "blind_scan_result_"
+            )
+            assert result_path.endswith(".fossid")
+            assert os.path.exists(result_path)
+        finally:
+            if os.path.exists(result_path):
+                os.unlink(result_path)
+
+    def test_temp_file_is_cleaned_up_on_nonzero_exit(
+        self, wrapper, tmp_path
+    ):
+        """Non-zero exit removes the temp file before raising."""
+        scan_target = tmp_path / "src.py"
+        scan_target.write_text("x = 1\n")
+
+        failed = MagicMock()
+        failed.returncode = 2
+        failed.stderr = "boom"
+
+        captured: dict = {}
+
+        def fake_run(*_args, **_kwargs):
+            captured["path"] = _kwargs["stdout"].name
+            return failed
+
+        with patch(
+            "workbench_agent.utilities.toolbox_wrapper.subprocess.run",
+            side_effect=fake_run,
+        ):
+            with pytest.raises(ProcessError, match="exit code 2"):
+                wrapper.generate_hashes(str(scan_target))
+
+        assert "path" in captured
+        assert not os.path.exists(captured["path"])
+
+    def test_temp_file_is_cleaned_up_on_timeout(self, wrapper, tmp_path):
+        """Subprocess timeout removes the temp file before raising."""
+        scan_target = tmp_path / "src.py"
+        scan_target.write_text("x = 1\n")
+
+        captured: dict = {}
+
+        def fake_run(*_args, **_kwargs):
+            captured["path"] = _kwargs["stdout"].name
+            raise subprocess.TimeoutExpired(cmd="fossid-toolbox", timeout=1)
+
+        with patch(
+            "workbench_agent.utilities.toolbox_wrapper.subprocess.run",
+            side_effect=fake_run,
+        ):
+            with pytest.raises(ProcessError, match="timed out"):
+                wrapper.generate_hashes(str(scan_target))
+
+        assert "path" in captured
+        assert not os.path.exists(captured["path"])
 
 

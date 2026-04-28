@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "workbench-agent"
 version = "0.8.0"
-description = "Use the Workbench Agent to automate Workbench operations like scanning, gating, and more."
+description = "Workbench Agent automates Workbench operations like scanning, gating, and more."
 license = "MIT"
 authors = [
   {name="Cristian Pana", email="cristian.pana@fossid.com"},
@@ -36,7 +36,7 @@ dev = [
 ]
 test = [
     "pytest>=7.0.0",
-    "pytest-mock>=3.6.1",
+    "pytest-mock>=3.10.0",
     "pytest-xdist>=3.0.0",
     "requests>=2.25.1",
 ]
@@ -51,7 +51,7 @@ per-file-ignores = [
 ]
 
 [tool.black]
-line-length = 75
+line-length = 100
 target-version = ['py310']
 include = '\.pyi?$'
 exclude = '''
@@ -151,8 +151,8 @@ markers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/fossid-ab/workbench-agent"
-"Bug Tracker" = "https://github.com/fossid-ab/workbench-agent/issues"
+"Homepage" = "https://github.com/fossid-ab/workbench-agent-ce"
+"Bug Tracker" = "https://github.com/fossid-ab/workbench-agent-ce/issues"
 
 [project.scripts]
 workbench-agent = "workbench_agent.main:main"

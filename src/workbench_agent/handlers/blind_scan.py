@@ -14,6 +14,7 @@ from workbench_agent.utilities.scan_workflows import (
     execute_scan_workflow,
 )
 from workbench_agent.utilities.toolbox_wrapper import ToolboxWrapper
+from workbench_agent.utilities.upload_data_prep import cleanup_temp_path
 
 if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
@@ -37,35 +38,6 @@ def resolve_fossid_toolbox_path(configured: Optional[str]) -> str:
             "pass --fossid-toolbox-path with the path to the executable."
         )
     return resolved
-
-
-def cleanup_temp_file(file_path: str) -> bool:
-    """
-    Clean up a temporary file.
-
-    Args:
-        file_path: Path to the temporary file to delete
-
-    Returns:
-        bool: True if file was successfully deleted or doesn't need
-             cleanup, False otherwise
-    """
-    if not file_path:
-        return True
-
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            logger.debug(f"Cleaned up temporary file: {file_path}")
-            return True
-        else:
-            logger.debug(
-                f"Temporary file already doesn't exist: {file_path}"
-            )
-            return True
-    except Exception as e:
-        logger.error(f"Failed to clean up temporary file {file_path}: {e}")
-        return False
 
 
 def validate_fossid_file(file_path: str) -> None:
@@ -156,8 +128,8 @@ def handle_blind_scan(
 
     Allows scanning without uploading source code to Workbench.
 
-    For the provided path, uses Toolbox to generate hashes,
-    uploads the hash file, then runs the scan.
+    For a provided path, use Toolbox to generate hashes,
+    upload the hash file, then run the scan.
 
     Alternatively, accepts a pre-generated .fossid file,
     skipping the Toolbox hashing step.
@@ -253,10 +225,6 @@ def handle_blind_scan(
                 logger.warning(
                     f"Failed to clear existing scan content: {e}"
                 )
-                print(
-                    f"Warning: Could not clear existing "
-                    f"scan content: {e}"
-                )
                 print("Continuing with hash upload...")
         else:
             logger.debug(
@@ -277,13 +245,5 @@ def handle_blind_scan(
 
     finally:
         # ===== STEP 6: Clean up temporary hash file =====
-        if should_cleanup and hash_file_path:
-            cleanup_success = cleanup_temp_file(hash_file_path)
-            if cleanup_success:
-                logger.debug(
-                    "Temporary hash file cleaned up successfully."
-                )
-            else:
-                logger.warning(
-                    "Failed to clean up temporary hash file."
-                )
+        if should_cleanup:
+            cleanup_temp_path(hash_file_path)

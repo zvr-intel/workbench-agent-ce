@@ -1,20 +1,91 @@
+"""
+Upload data preparation utilities.
+
+Helpers for preparing payloads to be uploaded to the Workbench API:
+- ``UploadArchivePrep``: builds a ZIP archive from a source directory,
+  honoring ``.gitignore`` and a set of default exclusions.
+- ``cleanup_temp_path(path)``: safely removes a temp file or directory
+  created during prep. Used by handlers after upload completes.
+- ``prepare_scan_target(path)``: a context manager that yields a file
+  path ready to upload. Wraps directory inputs into a temporary ZIP and
+  cleans it up on exit; passes file inputs through unchanged.
+"""
+
 import logging
 import os
 import shutil
 import tempfile
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Iterator, List, Optional, Set
 
 from workbench_agent.exceptions import FileSystemError
 
 logger = logging.getLogger("workbench-agent")
 
 
+def cleanup_temp_path(path: Optional[str]) -> None:
+    """
+    Remove a temporary file or directory created during upload prep.
+
+    Args:
+        path: Path to a temp file or directory. Anything outside
+            ``tempfile.gettempdir()`` is logged and skipped.
+    """
+    if not path or not os.path.exists(path):
+        return
+
+    if not path.startswith(tempfile.gettempdir()):
+        logger.debug(
+            f"Skipping cleanup of non-temp path: {path}"
+        )
+        return
+
+    try:
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            os.unlink(path)
+        logger.debug(f"Cleaned up temporary path: {path}")
+    except OSError as e:
+        logger.warning(
+            f"Failed to clean up temporary path {path}: {e}"
+        )
+
+
+@contextmanager
+def prepare_scan_target(path: str) -> Iterator[str]:
+    """
+    Yield a file path ready to upload as a scan target.
+
+    If ``path`` is a directory, it is compressed into a temporary ZIP
+    archive (via :class:`UploadArchivePrep`); the archive path is yielded
+    and the temp directory is removed when the ``with`` block exits.
+    If ``path`` is a file, it is yielded as-is with no cleanup.
+
+    Args:
+        path: Source path (directory or file) to prepare for upload.
+
+    Yields:
+        str: A file path safe to hand to ``UploadService.upload_scan_target``.
+    """
+    if os.path.isdir(path):
+        print("The path provided is a directory. Compressing...")
+        archive_path = UploadArchivePrep.create_zip_archive(path)
+        temp_dir = os.path.dirname(archive_path)
+        print("\nArchive prepared! Starting upload...")
+        try:
+            yield archive_path
+        finally:
+            cleanup_temp_path(temp_dir)
+    else:
+        yield path
+
+
 class UploadArchivePrep:
     """
-    Handles creation and preparation of archives for upload to Workbench.
-    Supports ZIP format with intelligent exclusions and validation.
+    Handles creation of ZIP archive for upload to Workbench.
     """
 
     # Default exclusions for cleaner archives
@@ -399,7 +470,7 @@ class UploadArchivePrep:
             )
         ):
             logger.debug(
-                f"✓ Excluded '{path}' - matched common directory pattern"
+                f"Excluded '{path}' - matched common directory pattern"
             )
             return True
 

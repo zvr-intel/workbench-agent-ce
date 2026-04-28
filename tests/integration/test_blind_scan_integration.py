@@ -3,7 +3,7 @@
 import os
 import shutil
 import sys
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -66,8 +66,8 @@ class TestBlindScanIntegration:
             patch("os.path.exists", return_value=True),
             patch("os.path.isdir", return_value=True),
             patch(
-                "workbench_agent.handlers.blind_scan.cleanup_temp_file",
-                return_value=True,
+                "workbench_agent.handlers.blind_scan.cleanup_temp_path",
+                return_value=None,
             ),
         ):
             args = [
@@ -127,8 +127,8 @@ class TestBlindScanIntegration:
             patch("os.path.exists", return_value=True),
             patch("os.path.isdir", return_value=True),
             patch(
-                "workbench_agent.handlers.blind_scan.cleanup_temp_file",
-                return_value=True,
+                "workbench_agent.handlers.blind_scan.cleanup_temp_path",
+                return_value=None,
             ),
         ):
             args = [
@@ -186,8 +186,8 @@ class TestBlindScanIntegration:
             patch("os.path.exists", return_value=True),
             patch("os.path.isdir", return_value=True),
             patch(
-                "workbench_agent.handlers.blind_scan.cleanup_temp_file",
-                return_value=True,
+                "workbench_agent.handlers.blind_scan.cleanup_temp_path",
+                return_value=None,
             ),
         ):
             args = [
@@ -434,7 +434,7 @@ class TestBlindScanIntegration:
         self, mock_workbench_api, tmp_path, capsys
     ):
         """
-        Test blind-scan command when Toolbox version check fails (should fail with error).
+        Test blind-scan fails when Toolbox version check fails.
         """
         dummy_path = create_dummy_directory(tmp_path)
 
@@ -455,8 +455,8 @@ class TestBlindScanIntegration:
             patch("os.path.exists", return_value=True),
             patch("os.path.isdir", return_value=True),
             patch(
-                "workbench_agent.handlers.blind_scan.cleanup_temp_file",
-                return_value=True,
+                "workbench_agent.handlers.blind_scan.cleanup_temp_path",
+                return_value=None,
             ),
         ):
             args = [
@@ -516,8 +516,8 @@ class TestBlindScanIntegration:
             patch("os.path.exists", return_value=True),
             patch("os.path.isdir", return_value=True),
             patch(
-                "workbench_agent.handlers.blind_scan.cleanup_temp_file",
-                return_value=True,
+                "workbench_agent.handlers.blind_scan.cleanup_temp_path",
+                return_value=None,
             ),
         ):
             args = [

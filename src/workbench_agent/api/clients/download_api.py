@@ -1,9 +1,6 @@
 """
 DownloadClient - Handles file downloads from Workbench.
 
-This client provides:
-- Report downloads (scan and project reports)
-- Future: Additional download operations from the 'download' API group
 """
 
 import logging
@@ -19,7 +16,7 @@ logger = logging.getLogger("workbench-agent")
 
 class DownloadClient:
     """
-    Downloads API client using composition pattern.
+    Downloads API client.
 
     Handles all file download operations from the 'download' API group.
 

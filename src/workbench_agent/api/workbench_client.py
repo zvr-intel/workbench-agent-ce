@@ -71,7 +71,9 @@ class WorkbenchClient:
         >>> # Direct API operations via clients
         >>> all_projects = workbench.projects.list_projects()
         >>> scan_info = workbench.scans.get_information(scan_code)
-        >>> workbench.upload_service.upload_scan_target(scan_code, "./src")
+        >>> workbench.upload_service.upload_scan_target(
+        ...     scan_code, "./source.zip"
+        ... )
         >>>
         >>> # High-level workflows via services
         >>> p_code, s_code, is_new = (

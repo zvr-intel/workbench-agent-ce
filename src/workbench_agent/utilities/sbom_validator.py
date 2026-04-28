@@ -457,27 +457,6 @@ class SBOMValidator:
             },
         }
 
-    @staticmethod
-    def cleanup_temp_file(file_path: str) -> None:
-        """
-        Clean up temporary files created during conversion.
-
-        Args:
-            file_path: Path to temporary file to clean up
-        """
-        if (
-            file_path
-            and os.path.exists(file_path)
-            and file_path.startswith(tempfile.gettempdir())
-        ):
-            try:
-                os.unlink(file_path)
-                logger.debug(f"Cleaned up temporary file: {file_path}")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to clean up temporary file {file_path}: {e}"
-                )
-
     # Keep the old method for backward compatibility but mark as deprecated
     @staticmethod
     def validate_sbom_file_deprecated(

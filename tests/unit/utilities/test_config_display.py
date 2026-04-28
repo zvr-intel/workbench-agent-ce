@@ -1,8 +1,12 @@
 """
 Unit tests for config_display module.
 
-Tests cover parameter categorization, section printing, connection info display,
-and the main configuration printing function.
+Covers:
+- ``_user_params`` filtering
+- ``_print_section`` rendering primitive
+- Each per-group ``_print_*`` renderer (correct title + correct param subset)
+- ``_print_connection_info`` (custom layout)
+- ``print_configuration`` orchestration + end-to-end smoke
 """
 
 import argparse
@@ -11,35 +15,47 @@ from unittest.mock import patch
 import pytest
 
 from workbench_agent.utilities.config_display import (
-    _categorize_parameters,
-    _print_cli_parameters,
+    _print_agent_config,
     _print_connection_info,
+    _print_identification_settings,
+    _print_other_parameters,
+    _print_report_generation,
+    _print_result_display,
+    _print_scan_operation_settings,
+    _print_scan_target,
     _print_section,
+    _user_params,
     print_configuration,
 )
 
 # ===== Fixtures =====
+#
+# Fixtures are declared as ``fixture_<name>`` and registered to pytest
+# under the bare ``<name>`` via ``@pytest.fixture(name=...)``. This avoids
+# pylint's ``redefined-outer-name`` warnings on every test parameter
+# (the function name at module scope no longer collides with the test
+# parameter name pytest injects).
 
 
-@pytest.fixture
-def mock_params(mocker):
-    """Create a mock params object with various parameter types."""
+@pytest.fixture(name="mock_params")
+def fixture_mock_params(mocker):
+    """A params namespace with at least one value in every group."""
     params = mocker.MagicMock(spec=argparse.Namespace)
-    # Connection params (should be skipped in categorization)
+    # Connection params (filtered out of every group)
     params.api_url = "https://api.example.com"
     params.api_user = "testuser"
     params.api_token = "secret_token"
     params.command = "scan"
 
-    # Agent config params
+    # Agent config
     params.log = "INFO"
-    params.fossid_cli_path = "/usr/bin/fossid"
+    params.fossid_toolbox_path = "/usr/bin/fossid"
     params.scan_number_of_tries = 60
     params.scan_wait_time = 5
     params.no_wait = False
     params.show_config = True
 
-    # Result display params
+    # Result display
     params.show_licenses = True
     params.show_components = False
     params.show_dependencies = True
@@ -48,7 +64,7 @@ def mock_params(mocker):
     params.show_vulnerabilities = False
     params.result_save_path = "/tmp/results"
 
-    # Identification params
+    # Identification
     params.autoid_file_copyrights = True
     params.autoid_file_licenses = False
     params.autoid_pending_ids = True
@@ -58,7 +74,7 @@ def mock_params(mocker):
     params.reuse_scan_ids = True
     params.replace_existing_identifications = False
 
-    # Scan operation params
+    # Scan operation
     params.limit = 10
     params.sensitivity = 6
     params.full_file_only = False
@@ -69,7 +85,7 @@ def mock_params(mocker):
     params.dependency_analysis_only = False
     params.scan_failed_only = False
 
-    # Scan target params
+    # Scan target
     params.project_name = "test_project"
     params.scan_name = "test_scan"
     params.path = "/path/to/source"
@@ -81,7 +97,7 @@ def mock_params(mocker):
     params.git_tag = None
     params.git_depth = None
 
-    # Report generation params
+    # Report generation
     params.report_scope = "scan"
     params.report_type = "spdx,cyclone_dx"
     params.disclaimer = None
@@ -90,204 +106,68 @@ def mock_params(mocker):
     params.selection_view = None
     params.include_vex = True
 
-    # Other params
+    # Catch-all (Other Parameters)
     params.unknown_param = "unknown_value"
     params.another_unknown = 42
 
     return params
 
 
-@pytest.fixture
-def mock_workbench_client(mocker):
-    """Create a mock WorkbenchClient instance."""
+@pytest.fixture(name="mock_workbench_client")
+def fixture_mock_workbench_client(mocker):
+    """A WorkbenchClient mock with a stubbable ``internal.get_config()``."""
     mock_client = mocker.MagicMock()
     mock_client.internal = mocker.MagicMock()
     mock_client.internal.get_config = mocker.MagicMock()
     return mock_client
 
 
-# ===== Tests for _categorize_parameters =====
+# ===== Tests for _user_params =====
 
 
-def test_categorize_parameters_all_categories(mock_params):
-    """Test that parameters are correctly categorized into all groups."""
-    (
-        agent_config,
-        result_display,
-        identification_settings,
-        scan_operation_settings,
-        scan_target,
-        report_generation,
-        other_params,
-    ) = _categorize_parameters(mock_params)
+def test_user_params_skips_connection_and_command():
+    """Connection params and command are filtered out."""
+    ns = argparse.Namespace()
+    ns.command = "scan"
+    ns.api_url = "https://api.example.com"
+    ns.api_user = "user"
+    ns.api_token = "token"
+    ns.log = "INFO"
 
-    # Check agent config
-    assert "log" in agent_config
-    assert "fossid_cli_path" in agent_config
-    assert "scan_number_of_tries" in agent_config
-    assert "scan_wait_time" in agent_config
-    assert "no_wait" in agent_config
-    assert "show_config" in agent_config
-    assert agent_config["log"] == "INFO"
-    assert agent_config["fossid_cli_path"] == "/usr/bin/fossid"
+    result = _user_params(ns)
 
-    # Check result display
-    assert "show_licenses" in result_display
-    assert "show_components" in result_display
-    assert "show_dependencies" in result_display
-    assert "show_scan_metrics" in result_display
-    assert "show_policy_warnings" in result_display
-    assert "show_vulnerabilities" in result_display
-    assert "result_save_path" in result_display
-    assert result_display["show_licenses"] is True
-    assert result_display["result_save_path"] == "/tmp/results"
-
-    # Check identification settings
-    assert "autoid_file_copyrights" in identification_settings
-    assert "autoid_file_licenses" in identification_settings
-    assert "autoid_pending_ids" in identification_settings
-    assert "reuse_any_identification" in identification_settings
-    assert "reuse_my_identifications" in identification_settings
-    assert "reuse_project_ids" in identification_settings
-    assert "reuse_scan_ids" in identification_settings
-    assert "replace_existing_identifications" in identification_settings
-
-    # Check scan operation settings
-    assert "limit" in scan_operation_settings
-    assert "sensitivity" in scan_operation_settings
-    assert "full_file_only" in scan_operation_settings
-    assert "advanced_match_scoring" in scan_operation_settings
-    assert "match_filtering_threshold" in scan_operation_settings
-    assert "delta_scan" in scan_operation_settings
-    assert "run_dependency_analysis" in scan_operation_settings
-    assert "dependency_analysis_only" in scan_operation_settings
-    assert "scan_failed_only" in scan_operation_settings
-    assert scan_operation_settings["limit"] == 10
-    assert scan_operation_settings["sensitivity"] == 6
-
-    # Check scan target
-    assert "project_name" in scan_target
-    assert "scan_name" in scan_target
-    assert "path" in scan_target
-    assert "jar_file_extraction" in scan_target
-    assert "recursively_extract_archives" in scan_target
-    assert "git_url" in scan_target
-    assert "git_branch" in scan_target
-    assert "git_commit" in scan_target
-    assert "git_tag" in scan_target
-    assert "git_depth" in scan_target
-    assert scan_target["project_name"] == "test_project"
-    assert scan_target["path"] == "/path/to/source"
-
-    # Check report generation
-    assert "report_scope" in report_generation
-    assert "report_type" in report_generation
-    assert "disclaimer" in report_generation
-    assert "report_save_path" in report_generation
-    assert "selection_type" in report_generation
-    assert "selection_view" in report_generation
-    assert "include_vex" in report_generation
-    assert report_generation["report_scope"] == "scan"
-    assert report_generation["report_type"] == "spdx,cyclone_dx"
-    assert report_generation["report_save_path"] == "./reports"
-    assert report_generation["include_vex"] is True
-
-    # Check other params
-    assert "unknown_param" in other_params
-    assert "another_unknown" in other_params
-    assert other_params["unknown_param"] == "unknown_value"
-    assert other_params["another_unknown"] == 42
+    assert "command" not in result
+    assert "api_url" not in result
+    assert "api_user" not in result
+    assert "api_token" not in result
+    assert result == {"log": "INFO"}
 
 
-def test_categorize_parameters_skips_connection_params(mock_params):
-    """Test that connection params and command are skipped."""
-    (
-        agent_config,
-        result_display,
-        identification_settings,
-        scan_operation_settings,
-        scan_target,
-        report_generation,
-        other_params,
-    ) = _categorize_parameters(mock_params)
+def test_user_params_skips_private_attributes():
+    """Attributes starting with underscore are filtered out."""
+    ns = argparse.Namespace()
+    ns.command = "scan"
+    ns.api_url = "u"
+    ns.api_user = "u"
+    ns.api_token = "t"
+    ns.log = "INFO"
+    ns._internal = "hidden"
 
-    # Connection params should not appear in any category
-    all_params = {
-        **agent_config,
-        **result_display,
-        **identification_settings,
-        **scan_operation_settings,
-        **scan_target,
-        **report_generation,
-        **other_params,
-    }
-    assert "api_url" not in all_params
-    assert "api_user" not in all_params
-    assert "api_token" not in all_params
-    assert "command" not in all_params
+    result = _user_params(ns)
+
+    assert "_internal" not in result
+    assert result == {"log": "INFO"}
 
 
-def test_categorize_parameters_empty_params():
-    """Test categorization with minimal params object."""
-    # Use argparse.Namespace directly instead of MagicMock to avoid mock attributes
-    params = argparse.Namespace()
-    params.command = "scan"
-    params.api_url = "https://api.example.com"
-    params.api_user = "user"
-    params.api_token = "token"
+def test_user_params_returns_empty_for_minimal_params():
+    """With only skipped keys, the result is empty."""
+    ns = argparse.Namespace()
+    ns.command = "scan"
+    ns.api_url = "u"
+    ns.api_user = "u"
+    ns.api_token = "t"
 
-    (
-        agent_config,
-        result_display,
-        identification_settings,
-        scan_operation_settings,
-        scan_target,
-        report_generation,
-        other_params,
-    ) = _categorize_parameters(params)
-
-    # All categories should be empty (only connection params and command)
-    assert agent_config == {}
-    assert result_display == {}
-    assert identification_settings == {}
-    assert scan_operation_settings == {}
-    assert scan_target == {}
-    assert report_generation == {}
-    assert other_params == {}
-
-
-def test_categorize_parameters_partial_params():
-    """Test categorization with only some parameter types."""
-    # Use argparse.Namespace directly instead of MagicMock to avoid mock attributes
-    params = argparse.Namespace()
-    params.command = "scan"
-    params.api_url = "https://api.example.com"
-    params.api_user = "user"
-    params.api_token = "token"
-    # Only agent config params
-    params.log = "DEBUG"
-    params.scan_number_of_tries = 30
-    # Only scan target params
-    params.project_name = "my_project"
-    params.scan_name = "my_scan"
-
-    (
-        agent_config,
-        result_display,
-        identification_settings,
-        scan_operation_settings,
-        scan_target,
-        report_generation,
-        other_params,
-    ) = _categorize_parameters(params)
-
-    assert len(agent_config) == 2
-    assert len(scan_target) == 2
-    assert result_display == {}
-    assert report_generation == {}
-    assert identification_settings == {}
-    assert scan_operation_settings == {}
-    assert other_params == {}
+    assert _user_params(ns) == {}
 
 
 # ===== Tests for _print_section =====
@@ -296,54 +176,185 @@ def test_categorize_parameters_partial_params():
 @patch("builtins.print")
 def test_print_section_with_params(mock_print):
     """Test printing a section with parameters."""
-    params_dict = {
-        "param1": "value1",
-        "param2": 42,
-        "param3": True,
-    }
+    items = {"param1": "value1", "param2": 42, "param3": True}
 
-    _print_section("Test Section", params_dict)
+    _print_section("Test Section", items)
 
-    # Verify print was called
     assert mock_print.call_count == 4  # Title + 3 params
-
-    # Check title was printed
     assert mock_print.call_args_list[0][0][0] == "\nTest Section"
 
-    # Check params were printed (sorted)
-    printed_lines = [call[0][0] for call in mock_print.call_args_list[1:]]
-    assert "  param1" in printed_lines[0]
-    assert "  param2" in printed_lines[1]
-    assert "  param3" in printed_lines[2]
+    printed = [call[0][0] for call in mock_print.call_args_list[1:]]
+    assert "  param1" in printed[0]
+    assert "  param2" in printed[1]
+    assert "  param3" in printed[2]
 
 
 @patch("builtins.print")
 def test_print_section_empty_dict(mock_print):
-    """Test printing a section with empty dict (should not print)."""
+    """Empty dict prints nothing."""
     _print_section("Empty Section", {})
-
-    # Should not print anything
     mock_print.assert_not_called()
 
 
 @patch("builtins.print")
 def test_print_section_sorted_output(mock_print):
-    """Test that parameters are printed in sorted order."""
-    params_dict = {
+    """Parameters are printed in sorted order."""
+    items = {
         "zebra": "z_value",
         "alpha": "a_value",
         "beta": "b_value",
     }
 
-    _print_section("Sorted Section", params_dict)
+    _print_section("Sorted Section", items)
 
-    # Get printed lines (skip title)
-    printed_lines = [call[0][0] for call in mock_print.call_args_list[1:]]
+    printed = [call[0][0] for call in mock_print.call_args_list[1:]]
+    assert "alpha" in printed[0]
+    assert "beta" in printed[1]
+    assert "zebra" in printed[2]
 
-    # Verify sorted order
-    assert "alpha" in printed_lines[0]
-    assert "beta" in printed_lines[1]
-    assert "zebra" in printed_lines[2]
+
+# ===== Tests for per-group renderers =====
+#
+# Each per-group renderer should:
+# 1. Print its own title (verifies the right group method is wired up)
+# 2. Print only the params it owns (no leakage from other groups)
+# 3. Skip command/connection/private params (covered by _user_params)
+# 4. Be a no-op when none of its params are set
+
+
+def _printed(mock_print) -> str:
+    """Concatenated print output for substring assertions."""
+    return "\n".join(call[0][0] for call in mock_print.call_args_list)
+
+
+@patch("builtins.print")
+def test_print_agent_config(mock_print, mock_params):
+    """Agent Configuration prints its title and only its keys."""
+    _print_agent_config(mock_params)
+    out = _printed(mock_print)
+
+    assert "⚙️  Agent Configuration:" in out
+    for k in ("log", "fossid_toolbox_path", "scan_number_of_tries"):
+        assert k in out
+    for k in ("project_name", "show_licenses", "limit", "report_scope"):
+        assert k not in out
+    for k in ("api_url", "api_user", "api_token", "command"):
+        assert k not in out
+
+
+@patch("builtins.print")
+def test_print_scan_target(mock_print, mock_params):
+    """Scan Target prints its title and only its keys."""
+    _print_scan_target(mock_params)
+    out = _printed(mock_print)
+
+    assert "🎯 Scan Target:" in out
+    for k in ("project_name", "scan_name", "path", "git_url"):
+        assert k in out
+    for k in ("log", "show_licenses", "limit", "report_scope"):
+        assert k not in out
+
+
+@patch("builtins.print")
+def test_print_scan_operation_settings(mock_print, mock_params):
+    """Scan Operation Settings prints its title and only its keys."""
+    _print_scan_operation_settings(mock_params)
+    out = _printed(mock_print)
+
+    assert "🔬 Scan Operation Settings:" in out
+    for k in ("limit", "sensitivity", "delta_scan"):
+        assert k in out
+    for k in ("log", "project_name", "show_licenses", "report_scope"):
+        assert k not in out
+
+
+@patch("builtins.print")
+def test_print_identification_settings(mock_print, mock_params):
+    """Identification Settings prints its title and only its keys."""
+    _print_identification_settings(mock_params)
+    out = _printed(mock_print)
+
+    assert "🔍 Identification Settings:" in out
+    for k in (
+        "autoid_file_copyrights",
+        "reuse_my_identifications",
+        "replace_existing_identifications",
+    ):
+        assert k in out
+    for k in ("log", "project_name", "limit", "report_scope"):
+        assert k not in out
+
+
+@patch("builtins.print")
+def test_print_result_display(mock_print, mock_params):
+    """Result Display prints its title and only its keys."""
+    _print_result_display(mock_params)
+    out = _printed(mock_print)
+
+    assert "📊 Result Display:" in out
+    for k in ("show_licenses", "show_components", "result_save_path"):
+        assert k in out
+    for k in ("log", "project_name", "limit", "report_scope"):
+        assert k not in out
+
+
+@patch("builtins.print")
+def test_print_report_generation(mock_print, mock_params):
+    """Report Generation prints its title and only its keys."""
+    _print_report_generation(mock_params)
+    out = _printed(mock_print)
+
+    assert "📄 Report Generation:" in out
+    for k in ("report_scope", "report_type", "include_vex"):
+        assert k in out
+    for k in ("log", "project_name", "limit", "show_licenses"):
+        assert k not in out
+
+
+@patch("builtins.print")
+def test_print_other_parameters_renders_unclaimed_keys(
+    mock_print, mock_params
+):
+    """Other Parameters prints any key not owned by a named group."""
+    _print_other_parameters(mock_params)
+    out = _printed(mock_print)
+
+    assert "📋 Other Parameters:" in out
+    assert "unknown_param" in out
+    assert "another_unknown" in out
+    for k in ("log", "project_name", "limit", "report_scope"):
+        assert k not in out
+
+
+@patch("builtins.print")
+def test_print_other_parameters_noop_when_all_known(mock_print):
+    """Other Parameters prints nothing when no unclaimed keys exist."""
+    ns = argparse.Namespace()
+    ns.command = "scan"
+    ns.api_url = "u"
+    ns.api_user = "u"
+    ns.api_token = "t"
+    ns.log = "INFO"
+    ns.project_name = "p"
+
+    _print_other_parameters(ns)
+
+    mock_print.assert_not_called()
+
+
+@patch("builtins.print")
+def test_per_group_method_noop_when_no_owned_params(mock_print):
+    """A group method prints nothing when none of its params are set."""
+    ns = argparse.Namespace()
+    ns.command = "scan"
+    ns.api_url = "u"
+    ns.api_user = "u"
+    ns.api_token = "t"
+    ns.unknown_param = "x"  # Only an "other" param
+
+    _print_agent_config(ns)
+
+    mock_print.assert_not_called()
 
 
 # ===== Tests for _print_connection_info =====
@@ -362,35 +373,26 @@ def test_print_connection_info_success(
 
     _print_connection_info(mock_params, mock_workbench_client)
 
-    # Verify print calls
     assert mock_print.call_count >= 4
-
-    # Get printed lines
     printed_lines = [call[0][0] for call in mock_print.call_args_list]
 
-    # Check connection info header
     assert any(
         "🔗 Workbench Connection Info:" in line for line in printed_lines
     )
-
-    # Check that URL is NOT displayed (security improvement)
+    # API URL is intentionally not displayed (security)
     assert not any(
         "https://api.example.com" in line for line in printed_lines
     )
     assert not any("API URL" in line for line in printed_lines)
 
-    # Check connection parameters (API User should still be shown)
     assert any("API User" in line for line in printed_lines)
     assert any("testuser" in line for line in printed_lines)
-
-    # Check server info
     assert any("Server Name" in line for line in printed_lines)
     assert any("Test Server" in line for line in printed_lines)
     assert any("Workbench Version" in line for line in printed_lines)
     assert any("24.3.0" in line for line in printed_lines)
     assert any("✓ Connected" in line for line in printed_lines)
 
-    # Verify get_config was called
     mock_workbench_client.internal.get_config.assert_called_once()
 
 
@@ -405,7 +407,6 @@ def test_print_connection_info_empty_server_info(
 
     printed_lines = [call[0][0] for call in mock_print.call_args_list]
 
-    # Should show Unknown for server info
     assert any(
         "Server Name" in line and "Unknown" in line
         for line in printed_lines
@@ -433,7 +434,6 @@ def test_print_connection_info_exception_handling(
 
     printed_lines = [call[0][0] for call in mock_print.call_args_list]
 
-    # Should show Unknown and error status
     assert any(
         "Server Name" in line and "Unknown" in line
         for line in printed_lines
@@ -455,14 +455,12 @@ def test_print_connection_info_partial_server_info(
     """Test connection info with partial server info (missing some fields)."""
     mock_workbench_client.internal.get_config.return_value = {
         "version": "24.3.0",
-        # server_name missing
     }
 
     _print_connection_info(mock_params, mock_workbench_client)
 
     printed_lines = [call[0][0] for call in mock_print.call_args_list]
 
-    # Should show Unknown for missing fields
     assert any(
         "Server Name" in line and "Unknown" in line
         for line in printed_lines
@@ -470,113 +468,97 @@ def test_print_connection_info_partial_server_info(
     assert any("24.3.0" in line for line in printed_lines)
 
 
-# ===== Tests for _print_cli_parameters =====
-
-
-@patch("workbench_agent.utilities.config_display._print_section")
-def test_print_cli_parameters_calls_all_sections(
-    mock_print_section, mock_params
-):
-    """Test that _print_cli_parameters calls all section print functions."""
-    _print_cli_parameters(mock_params)
-
-    # Should be called 7 times (6 sections + other params)
-    assert mock_print_section.call_count == 7
-
-    # Get section titles
-    section_titles = [
-        call[0][0] for call in mock_print_section.call_args_list
-    ]
-
-    assert "⚙️  Agent Configuration:" in section_titles
-    assert "🎯 Scan Target:" in section_titles
-    assert "🔬 Scan Operation Settings:" in section_titles
-    assert "🔍 Identification Settings:" in section_titles
-    assert "📊 Result Display:" in section_titles
-    assert "📄 Report Generation:" in section_titles
-    assert "📋 Other Parameters:" in section_titles
-
-
-@patch("workbench_agent.utilities.config_display._print_section")
-def test_print_cli_parameters_empty_params(mock_print_section, mocker):
-    """Test _print_cli_parameters with minimal params."""
-    params = mocker.MagicMock(spec=argparse.Namespace)
-    params.command = "scan"
-    params.api_url = "https://api.example.com"
-    params.api_user = "user"
-    params.api_token = "token"
-
-    _print_cli_parameters(params)
-
-    # Should still call all sections, but some will be empty
-    assert mock_print_section.call_count == 7
-
-    # Check that empty sections are not printed (handled by _print_section)
-    section_calls = mock_print_section.call_args_list
-    for call in section_calls:
-        # Each call should have a title and a dict
-        assert len(call[0]) == 2
-        assert isinstance(call[0][1], dict)
-
-
 # ===== Tests for print_configuration =====
 
 
-@patch("workbench_agent.utilities.config_display._print_cli_parameters")
+def test_print_configuration_calls_all_section_renderers(
+    mock_params, mock_workbench_client
+):
+    """print_configuration delegates to every section renderer in order."""
+    with patch(
+        "workbench_agent.utilities.config_display._print_connection_info"
+    ) as m_conn, patch(
+        "workbench_agent.utilities.config_display._print_agent_config"
+    ) as m_agent, patch(
+        "workbench_agent.utilities.config_display._print_scan_target"
+    ) as m_target, patch(
+        "workbench_agent.utilities.config_display"
+        "._print_scan_operation_settings"
+    ) as m_ops, patch(
+        "workbench_agent.utilities.config_display"
+        "._print_identification_settings"
+    ) as m_ident, patch(
+        "workbench_agent.utilities.config_display._print_result_display"
+    ) as m_results, patch(
+        "workbench_agent.utilities.config_display._print_report_generation"
+    ) as m_reports, patch(
+        "workbench_agent.utilities.config_display._print_other_parameters"
+    ) as m_other:
+        print_configuration(mock_params, mock_workbench_client)
+
+    m_conn.assert_called_once_with(mock_params, mock_workbench_client)
+    for m in (
+        m_agent,
+        m_target,
+        m_ops,
+        m_ident,
+        m_results,
+        m_reports,
+        m_other,
+    ):
+        m.assert_called_once_with(mock_params)
+
+
+@patch("workbench_agent.utilities.config_display._print_other_parameters")
+@patch("workbench_agent.utilities.config_display._print_report_generation")
+@patch("workbench_agent.utilities.config_display._print_result_display")
+@patch(
+    "workbench_agent.utilities.config_display"
+    "._print_identification_settings"
+)
+@patch(
+    "workbench_agent.utilities.config_display"
+    "._print_scan_operation_settings"
+)
+@patch("workbench_agent.utilities.config_display._print_scan_target")
+@patch("workbench_agent.utilities.config_display._print_agent_config")
 @patch("workbench_agent.utilities.config_display._print_connection_info")
 @patch("builtins.print")
-def test_print_configuration_full(
+def test_print_configuration_prints_header_and_command(
     mock_print,
-    mock_print_conn,
-    mock_print_cli,
+    _m_conn,
+    _m_agent,
+    _m_target,
+    _m_ops,
+    _m_ident,
+    _m_results,
+    _m_reports,
+    _m_other,
     mock_params,
     mock_workbench_client,
 ):
-    """Test print_configuration calls all sub-functions."""
+    """The header line, command echo, and footer are emitted."""
+    mock_params.command = "show-results"
+
     print_configuration(mock_params, mock_workbench_client)
 
-    # Check header was printed
-    assert mock_print.call_count >= 2
     printed_lines = [call[0][0] for call in mock_print.call_args_list]
     assert any(
         "--- Workbench Agent Configuration ---" in line
         for line in printed_lines
     )
-    assert any("Command: scan" in line for line in printed_lines)
-
-    # Check sub-functions were called
-    mock_print_cli.assert_called_once_with(mock_params)
-    mock_print_conn.assert_called_once_with(
-        mock_params, mock_workbench_client
-    )
-
-    # Check footer
+    assert any("Command: show-results" in line for line in printed_lines)
     assert any(
         "------------------------------------" in line
         for line in printed_lines
     )
 
 
-@patch("workbench_agent.utilities.config_display._print_cli_parameters")
-@patch("workbench_agent.utilities.config_display._print_connection_info")
-@patch("builtins.print")
-def test_print_configuration_different_command(
-    mock_print, mock_params, mock_workbench_client
-):
-    """Test print_configuration with different command."""
-    mock_params.command = "show-results"
-
-    print_configuration(mock_params, mock_workbench_client)
-
-    printed_lines = [call[0][0] for call in mock_print.call_args_list]
-    assert any("Command: show-results" in line for line in printed_lines)
-
-
 @patch("builtins.print")
 def test_print_configuration_integration(
     mock_print, mock_params, mock_workbench_client
 ):
-    """Test print_configuration integration without mocking sub-functions."""
+    """End-to-end smoke test without mocking sub-functions."""
     mock_workbench_client.internal.get_config.return_value = {
         "server_name": "Integration Server",
         "version": "24.4.0",
@@ -584,23 +566,20 @@ def test_print_configuration_integration(
 
     print_configuration(mock_params, mock_workbench_client)
 
-    # Verify header and footer
-    printed_lines = [call[0][0] for call in mock_print.call_args_list]
-    assert any(
-        "--- Workbench Agent Configuration ---" in line
-        for line in printed_lines
-    )
-    assert any("Command: scan" in line for line in printed_lines)
-    assert any(
-        "------------------------------------" in line
-        for line in printed_lines
-    )
+    out = _printed(mock_print)
+    assert "--- Workbench Agent Configuration ---" in out
+    assert "Command: scan" in out
+    assert "------------------------------------" in out
 
-    # Verify connection info was printed
-    assert any(
-        "🔗 Workbench Connection Info:" in line for line in printed_lines
-    )
-
-    # Verify sections were printed
-    assert any("⚙️  Agent Configuration:" in line for line in printed_lines)
-    assert any("🎯 Scan Target:" in line for line in printed_lines)
+    # All eight sections render their titles.
+    for title in (
+        "🔗 Workbench Connection Info:",
+        "⚙️  Agent Configuration:",
+        "🎯 Scan Target:",
+        "🔬 Scan Operation Settings:",
+        "🔍 Identification Settings:",
+        "📊 Result Display:",
+        "📄 Report Generation:",
+        "📋 Other Parameters:",
+    ):
+        assert title in out

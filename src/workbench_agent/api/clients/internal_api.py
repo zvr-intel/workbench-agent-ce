@@ -14,10 +14,9 @@ logger = logging.getLogger("workbench-agent")
 
 class InternalClient:
     """
-    Internal API client using composition pattern.
+    Internal API client.
 
-    Handles internal Workbench operations including:
-    - Configuration retrieval (version info, server settings, feature flags)
+    Handles Workbench configuration retrieval (version, server settings)
 
     Example:
         >>> internal = InternalClient(base_api)

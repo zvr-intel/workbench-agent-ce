@@ -30,15 +30,14 @@ logger = logging.getLogger("workbench-agent")
 
 class UploadsClient:
     """
-    Uploads API client using composition pattern.
+    Uploads API client.
 
     Handles low-level HTTP operations for file uploads:
     - File upload with automatic chunking for large files
-    - Progress tracking
-    - Retry logic for chunked uploads
+    - Progress tracking and retry logic
 
     This client focuses on the HTTP communication layer. For business logic
-    (preparing files, setting headers based on upload type), use UploadService.
+    (preparing files, setting headers), use UploadService instead.
 
     Example:
         >>> uploads = UploadsClient(base_api)
@@ -51,7 +50,7 @@ class UploadsClient:
         >>> uploads.upload_file_chunked("/path/to/large_file.zip", headers)
     """
 
-    # Upload Constants (HTTP implementation details)
+    # Upload Constants (safe for php defaults)
     CHUNK_SIZE = 7 * 1024 * 1024  # 7MB
     MAX_CHUNK_RETRIES = 3
     PROGRESS_UPDATE_INTERVAL = 20  # Percent

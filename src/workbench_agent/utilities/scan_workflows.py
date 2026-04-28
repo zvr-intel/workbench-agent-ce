@@ -111,8 +111,7 @@ def _print_scan_summary(
     Post-scan summary for scan operations.
 
     When *show_summary* is ``True``, shows comprehensive operation
-    details, identification metrics, components/licenses, and security
-    risks.  When ``False``, only shows the Workbench link.
+    details. When ``False``, only shows a link to Workbench.
     """
     from workbench_agent.api.exceptions import ApiError, NetworkError
 
@@ -439,8 +438,7 @@ def execute_scan_workflow(
     Run scans, wait for completion, and print the summary.
 
     This is the single entry point that all scan handlers
-    (``scan``, ``scan-git``, ``blind-scan``) call after their
-    respective setup phases (upload, git clone, hash generation).
+    call after their respective setup phases.
 
     Handles DA-only mode, KB scan mode, ``--no-wait`` mode,
     ID reuse resolution, and result summary display.

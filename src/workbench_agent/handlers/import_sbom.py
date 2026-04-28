@@ -16,6 +16,7 @@ from workbench_agent.utilities.pre_flight_checks import (
     import_sbom_pre_flight_check,
 )
 from workbench_agent.utilities.sbom_validator import SBOMValidator
+from workbench_agent.utilities.upload_data_prep import cleanup_temp_path
 
 if TYPE_CHECKING:
     from workbench_agent.api import WorkbenchClient
@@ -37,6 +38,7 @@ def _validate_sbom_file(file_path: str) -> Tuple[str, str, Dict, Any]:
     Raises:
         ValidationError: If SBOM validation fails
         FileSystemError: If file doesn't exist or can't be read
+        Exception: If an unexpected error occurs
     """
     try:
         (
@@ -72,6 +74,7 @@ def _prepare_sbom_for_upload(
 
     Raises:
         ValidationError: If preparation/conversion fails
+        Exception: If an unexpected error occurs
     """
     try:
         upload_path = SBOMValidator.prepare_sbom_for_upload(
@@ -143,6 +146,9 @@ def handle_import_sbom(
     Raises:
         ValidationError: If SBOM validation fails
         WorkbenchAgentError: If import fails
+        ProcessError: If process fails
+        ProcessTimeoutError: If process times out
+        Exception: If an unexpected error occurs
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
 
@@ -178,7 +184,7 @@ def handle_import_sbom(
         # Resolve project and scan (find or create)
         print("\n--- Project and Scan Checks ---")
         print("Checking target Project and Scan...")
-        project_code, scan_code, scan_is_new = (
+        _, scan_code, scan_is_new = (
             client.resolver.find_or_create_project_and_scan(
                 project_name=params.project_name,
                 scan_name=params.scan_name,
@@ -285,9 +291,5 @@ def handle_import_sbom(
 
     finally:
         # Clean up temporary file if one was created
-        if temp_file_created and upload_path:
-            try:
-                SBOMValidator.cleanup_temp_file(upload_path)
-            except Exception as e:
-                logger.warning(f"Failed to clean up temporary file: {e}")
-                # Don't fail the operation if cleanup fails
+        if temp_file_created:
+            cleanup_temp_path(upload_path)
