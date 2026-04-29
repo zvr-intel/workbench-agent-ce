@@ -1,4 +1,4 @@
-name: Diff Scanning and Gating
+name: PR Diff Scan with Gates
 
 on: pull_request
 
@@ -34,7 +34,7 @@ jobs:
             echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Scan with Workbench Agent CE
+      - name: Scan Diff with Workbench Agent
         if: steps.create-diff-archive.outputs.has_changes == 'true'
         run: |
           docker run --rm \
@@ -45,10 +45,11 @@ jobs:
           --api-user ${{ secrets.WORKBENCH_USER }} \
           --api-token ${{ secrets.WORKBENCH_TOKEN }} \
           --project-name $GITHUB_REPOSITORY \
-          --scan-name Diff-$GITHUB_HEAD_REF \
+          --scan-name PR-HEAD-DIFF-$GITHUB_HEAD_REF \
           --path /code/diff-archive.zip \
           --autoid-file-licenses \
-          --autoid-file-copyrights
+          --autoid-file-copyrights \
+          --delta-scan
 
       - name: No changes to scan
         if: steps.create-diff-archive.outputs.has_changes == 'false'
@@ -58,7 +59,7 @@ jobs:
     needs: run_differential_scan
     runs-on: ubuntu-latest
     steps:
-      - name: Evaluate Post Scan Gates
+      - name: Evaluate Gates for Diff Scan
         run: |
           docker run --rm \
           ghcr.io/fossid-ab/workbench-agent-ce:latest \
@@ -67,6 +68,6 @@ jobs:
           --api-user ${{ secrets.WORKBENCH_USER }} \
           --api-token ${{ secrets.WORKBENCH_TOKEN }} \
           --project-name $GITHUB_REPOSITORY \
-          --scan-name Diff-$GITHUB_HEAD_REF \
+          --scan-name PR-HEAD-DIFF-$GITHUB_HEAD_REF \
           --fail-on-pending \
           --fail-on-policy
