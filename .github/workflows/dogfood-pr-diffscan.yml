@@ -44,7 +44,7 @@ jobs:
           --api-url ${{ secrets.WORKBENCH_URL }} \
           --api-user ${{ secrets.WORKBENCH_USER }} \
           --api-token ${{ secrets.WORKBENCH_TOKEN }} \
-          --project-name DogFood-$GITHUB_REPOSITORY \
+          --project-name $GITHUB_REPOSITORY \
           --scan-name PR-HEAD-DIFF-$GITHUB_HEAD_REF \
           --path /code/diff-archive.zip \
           --autoid-file-licenses \
@@ -67,7 +67,7 @@ jobs:
           --api-url ${{ secrets.WORKBENCH_URL }} \
           --api-user ${{ secrets.WORKBENCH_USER }} \
           --api-token ${{ secrets.WORKBENCH_TOKEN }} \
-          --project-name DogFood-$GITHUB_REPOSITORY \
+          --project-name $GITHUB_REPOSITORY \
           --scan-name PR-HEAD-DIFF-$GITHUB_HEAD_REF \
           --fail-on-pending \
           --fail-on-policy

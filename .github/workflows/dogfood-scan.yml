@@ -39,10 +39,10 @@ jobs:
         --api-url ${{ env.WORKBENCH_URL }} \
         --api-user ${{ env.WORKBENCH_USER }} \
         --api-token ${{ env.WORKBENCH_TOKEN }} \
-        --project-name DogFood-$GITHUB_REPOSITORY \
+        --project-name $GITHUB_REPOSITORY \
         --scan-name PR-HEAD-$GITHUB_HEAD_REF \
         --path $GITHUB_WORKSPACE/code.zip \
-        --reuse-project-ids DogFood-$GITHUB_REPOSITORY \
+        --reuse-project-ids $GITHUB_REPOSITORY \
         --run-dependency-analysis \
         --autoid-file-licenses \
         --autoid-file-copyrights \
@@ -55,7 +55,7 @@ jobs:
         --api-url ${{ env.WORKBENCH_URL }} \
         --api-user ${{ env.WORKBENCH_USER }} \
         --api-token ${{ env.WORKBENCH_TOKEN }} \
-        --project-name DogFood-$GITHUB_REPOSITORY \
+        --project-name $GITHUB_REPOSITORY \
         --scan-name PR-HEAD-$GITHUB_HEAD_REF \
         --fail-on-pending \
         --fail-on-policy
