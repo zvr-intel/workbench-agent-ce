@@ -4,10 +4,14 @@ Functional tests for blind-scan workflow.
 Tests the complete end-to-end workflow:
 blind-scan → show-results → evaluate-gates → download-reports → delete-scan (cleanup)
 
-Note: Requires fossid-toolbox to be installed and available on PATH.
+Uses the ``tests/fixtures/signatures`` hash fixture (copied to ``signatures.fossid`` in the
+temp directory) so blind-scan validates and uploads pre-generated hashes without
+fossid-toolbox.
 """
 
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -16,7 +20,6 @@ from tests.functional.cli_helpers import assert_delete_scan_succeeded, run_delet
 
 @pytest.mark.functional
 @pytest.mark.requires_workbench
-@pytest.mark.requires_toolbox
 class TestBlindScanWorkflow:
     """Test complete blind-scan workflow with all follow-up commands."""
 
@@ -27,22 +30,26 @@ class TestBlindScanWorkflow:
         temp_reports_dir,
         project_name,
         unique_scan_name,
-        fossid_toolbox_path,
+        fixtures_dir,
     ):
         """
         Test complete blind-scan workflow.
 
         Steps:
-        1. Blind scan with dependency analysis
+        1. Blind scan using pre-generated ``signatures.fossid`` (from fixture ``signatures``)
         2. Show results with all display options
         3. Evaluate quality gates
         4. Download project-level reports
         5. Download scan-level reports
         6. Delete scan (cleanup on Workbench)
-
-        Requires:
-        - fossid-toolbox installed on PATH
         """
+        signatures_src = fixtures_dir / "signatures"
+        assert signatures_src.is_file(), (
+            f"Missing fixture: {signatures_src}"
+        )
+        fossid_path = Path(temp_source_dir) / "signatures.fossid"
+        shutil.copy(signatures_src, fossid_path)
+
         scan_created = False
         try:
             # Step 1: Blind-Scan
@@ -58,10 +65,7 @@ class TestBlindScanWorkflow:
                     "--scan-name",
                     unique_scan_name,
                     "--path",
-                    temp_source_dir,
-                    "--fossid-toolbox-path",
-                    fossid_toolbox_path,
-                    "--run-dependency-analysis",
+                    str(fossid_path),
                 ],
                 capture_output=True,
                 text=True,
@@ -151,11 +155,11 @@ class TestBlindScanWorkflow:
                 f"STDERR: {result.stderr}"
             )
             print(
-                f"[BLIND-SCAN] Step 4: ✓ Project reports downloaded successfully"
+                "[BLIND-SCAN] Step 4: ✓ Project reports downloaded successfully"
             )
 
             # Step 5: Download Reports (Scan Scope)
-            print(f"[BLIND-SCAN] Step 5: Downloading scan-level reports")
+            print("[BLIND-SCAN] Step 5: Downloading scan-level reports")
             scan_reports_dir = temp_reports_dir / "scan"
             scan_reports_dir.mkdir(parents=True, exist_ok=True)
 
