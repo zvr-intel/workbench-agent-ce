@@ -82,8 +82,8 @@ jobs:
           WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
           WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
         run: |
-          # Run functional tests in parallel (exclude blind-scan which requires toolbox)
-          pytest -v -m "functional and not requires_toolbox" -n 4 --tb=short --junit-xml=functional-test-results.xml
+          # All functional tests (including blind-scan via tests/fixtures/signatures; no toolbox in CI)
+          pytest -v -m functional -n 4 --tb=short --junit-xml=functional-test-results.xml
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
