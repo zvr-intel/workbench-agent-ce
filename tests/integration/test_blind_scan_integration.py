@@ -313,16 +313,15 @@ class TestBlindScanIntegration:
         Test blind-scan accepts a .fossid file,
         skips Toolbox hashing, and uploads it directly.
         """
-        fossid_file = os.path.join(FIXTURES_DIR, "signatures.fossid")
+        signatures_src = os.path.join(FIXTURES_DIR, "signatures")
+        fossid_file = tmp_path / "signatures.fossid"
+        shutil.copy(signatures_src, fossid_file)
 
         mock_toolbox_cls = MagicMock()
 
-        with (
-            patch(
-                "workbench_agent.handlers.blind_scan.ToolboxWrapper",
-                mock_toolbox_cls,
-            ),
-            patch("os.path.exists", return_value=True),
+        with patch(
+            "workbench_agent.handlers.blind_scan.ToolboxWrapper",
+            mock_toolbox_cls,
         ):
             args = [
                 "workbench-agent",
@@ -338,7 +337,7 @@ class TestBlindScanIntegration:
                 "--scan-name",
                 "TestBlindScanFossidFile",
                 "--path",
-                fossid_file,
+                str(fossid_file),
             ]
 
             with patch.object(sys, "argv", args):

@@ -1,6 +1,6 @@
 # Functional Tests
 
-Production-grade end-to-end functional tests using pytest. These tests execute actual `workbench-agent` CLI commands against a real Workbench server to validate complete workflows.
+Production-grade end-to-end functional tests using pytest. These tests execute `workbench-agent` commands against a real Workbench server.
 
 ## Prerequisites
 
@@ -11,12 +11,6 @@ export WORKBENCH_URL="https://your-workbench-server.com/api.php"
 export WORKBENCH_USER="your_username"
 export WORKBENCH_TOKEN="your_api_token"
 ```
-
-### Optional Dependencies
-
-- **fossid-toolbox**: Required for `test_blind_scan_workflow.py`
-  - Must be installed and available on PATH
-  - Tests will be skipped if not found
 
 ### Python Dependencies
 
@@ -116,10 +110,9 @@ Each test file validates a complete end-to-end workflow:
 - Validates all follow-up commands
 
 ### `test_blind_scan_workflow.py`
-**Workflow:** blind-scan → show-results → evaluate-gates → download-reports
-- Requires fossid-toolbox installed
-- Creates temporary source directory
-- Performs blind scan with dependency analysis
+**Workflow:** blind-scan → show-results → evaluate-gates → download-reports → delete-scan
+- Copies `tests/fixtures/signatures` to `signatures.fossid` under the temp source directory (the repo stores the fixture without a `.fossid` extension so other tooling is not confused by a stray hash file in `fixtures/`)
+- Runs `blind-scan` with `--path` pointing at that file so Workbench receives pre-generated hashes and **fossid-toolbox is not required**
 - Validates all follow-up commands
 
 ### `test_import_da_workflow.py`
@@ -134,51 +127,6 @@ Each test file validates a complete end-to-end workflow:
 - Imports SBOM in CycloneDX format
 - Validates all follow-up commands
 
-## CI/CD Integration
-
-### GitHub Actions Example
-
-```yaml
-name: Functional Tests
-
-on: [push, pull_request]
-
-jobs:
-  functional-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-      
-      - name: Install dependencies
-        run: |
-          pip install -e ".[test]"
-      
-      - name: Run functional tests
-        env:
-          WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
-          WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
-          WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
-        run: |
-          pytest -v -m "functional and not requires_toolbox" -n 4
-      
-      - name: Run blind-scan tests (if toolbox available)
-        if: ${{ env.TOOLBOX_INSTALLED }}
-        run: |
-          pytest -v -m "functional and requires_toolbox"
-```
-
-### JUnit XML Output
-
-Generate JUnit XML for CI tools:
-
-```bash
-pytest -v -m functional --junit-xml=test-results.xml
-```
-
 ## Fixtures
 
 Shared test fixtures are defined in `conftest.py`:
@@ -189,7 +137,6 @@ Shared test fixtures are defined in `conftest.py`:
 - **`unique_scan_name`**: Generates unique scan names using process ID
 - **`project_name`**: Standard project name for all tests
 - **`fixtures_dir`**: Path to test fixture files
-- **`fossid_toolbox_path`**: Validates and provides toolbox path
 
 ## Best Practices
 
@@ -238,13 +185,6 @@ echo $WORKBENCH_USER
 echo $WORKBENCH_TOKEN
 ```
 
-### blind-scan tests skip with "fossid-toolbox not found"
-
-Install fossid-toolbox and ensure it's on your PATH:
-```bash
-which fossid-toolbox
-```
-
 ### Tests fail with "workbench-agent command not found"
 
 Install workbench-agent:
@@ -263,20 +203,3 @@ Or run sequentially:
 ```bash
 pytest -v -m functional
 ```
-
-## Comparison with Bash Scripts
-
-These pytest tests replace the bash scripts in `tests/scripts/functional_tests/`:
-
-| **Aspect** | **Bash Scripts** | **pytest Tests** |
-|------------|-----------------|------------------|
-| **Framework** | Custom bash | Industry-standard pytest |
-| **Parallel** | Custom logic with issues | Built-in with pytest-xdist |
-| **Debugging** | Echo statements | pytest debugger, detailed assertions |
-| **CI Integration** | Basic exit codes | JUnit XML, coverage reports |
-| **Maintenance** | Shell scripting complexity | Python, easy to understand |
-| **Fixtures** | Manual setup/teardown | pytest fixtures with auto-cleanup |
-| **Error Messages** | Basic | Detailed with full context |
-
-The bash scripts can be kept as a backup or removed once pytest tests are validated.
-
