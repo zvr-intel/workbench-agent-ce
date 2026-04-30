@@ -155,11 +155,11 @@ class TestBlindScanWorkflow:
                 f"STDERR: {result.stderr}"
             )
             print(
-                f"[BLIND-SCAN] Step 4: ✓ Project reports downloaded successfully"
+                "[BLIND-SCAN] Step 4: ✓ Project reports downloaded successfully"
             )
 
             # Step 5: Download Reports (Scan Scope)
-            print(f"[BLIND-SCAN] Step 5: Downloading scan-level reports")
+            print("[BLIND-SCAN] Step 5: Downloading scan-level reports")
             scan_reports_dir = temp_reports_dir / "scan"
             scan_reports_dir.mkdir(parents=True, exist_ok=True)
 
